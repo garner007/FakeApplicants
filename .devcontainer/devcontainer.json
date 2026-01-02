@@ -1,13 +1,15 @@
 {
   "name": "Applicant Validator Dev",
-  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.dev.yml"],
-  "service": "app",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
   "workspaceFolder": "/workspace",
-  "shutdownAction": "stopCompose",
 
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
 
   "customizations": {
@@ -19,7 +21,9 @@
         "ms-python.mypy-type-checker",
         "mtxr.sqltools",
         "mtxr.sqltools-driver-pg",
-        "ms-azuretools.vscode-docker"
+        "ms-azuretools.vscode-docker",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
@@ -38,20 +42,23 @@
     }
   },
 
-  "forwardPorts": [3000, 8000, 5432, 5050],
+  "forwardPorts": [3000, 8000, 5432],
   "portsAttributes": {
     "3000": {"label": "Frontend (Next.js)"},
     "8000": {"label": "API Server"},
-    "5432": {"label": "PostgreSQL"},
-    "5050": {"label": "pgAdmin"}
+    "5432": {"label": "PostgreSQL"}
   },
 
-  "postCreateCommand": "uv sync --all-extras && uv run pre-commit install && cd frontend && npm install",
-  "postStartCommand": "uv run alembic upgrade head || true",
+  "postCreateCommand": ".devcontainer/setup.sh",
+  "postStartCommand": "docker compose -f docker-compose.yml up -d postgres && sleep 3 && uv run alembic upgrade head || true",
 
   "remoteUser": "vscode",
 
   "containerEnv": {
-    "DATABASE_URL": "postgresql+asyncpg://applicant_validator:dev_password_change_me@postgres:5432/applicant_validator"
-  }
+    "DATABASE_URL": "postgresql+asyncpg://applicant_validator:dev_password_change_me@localhost:5432/applicant_validator"
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+  ]
 }

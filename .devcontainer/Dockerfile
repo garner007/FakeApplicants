@@ -38,6 +38,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && chown -R $USERNAME:$USERNAME /home/$USERNAME/.cache
 
 # Set up workspace
+RUN mkdir -p /workspace && chown $USERNAME:$USERNAME /workspace
 WORKDIR /workspace
 
 # Configure uv
@@ -45,6 +46,7 @@ ENV UV_LINK_MODE=copy
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_PYTHON_DOWNLOADS=never
 ENV UV_PYTHON=python3.12
+ENV PATH="/workspace/.venv/bin:$PATH"
 
 # Switch to non-root user
 USER $USERNAME
