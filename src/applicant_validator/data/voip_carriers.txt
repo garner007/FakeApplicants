@@ -1,0 +1,106 @@
+# Known VoIP Carriers
+# These carrier names are returned by phonenumbers library's carrier.name_for_number()
+# When a number's carrier matches one of these, it's likely a VoIP number
+# Format: one carrier name per line (case-insensitive matching), comments start with #
+# Last updated: 2024-01
+
+# Major VoIP Providers
+Google Voice
+Bandwidth.com
+Bandwidth.com CLEC
+Twilio
+Vonage
+RingCentral
+Grasshopper
+OpenPhone
+TextNow
+Pinger
+Line2
+Sideline
+Burner
+Hushed
+TextFree
+TextPlus
+2ndLine
+CoverMe
+Phoner
+
+# Business VoIP
+8x8
+Nextiva
+Ooma
+Dialpad
+Zoom Phone
+Microsoft Teams
+Cisco Webex Calling
+GoTo Connect
+Jive Communications
+Mitel
+Intermedia
+Phone.com
+Aircall
+CloudTalk
+JustCall
+Talkdesk
+Five9
+Genesys Cloud
+
+# International VoIP
+Skype
+WhatsApp
+Viber
+Telegram
+Signal
+WeChat
+LINE
+KakaoTalk
+Rebtel
+Dingtone
+TalkU
+Talkatone
+TextMe
+Flyp
+Numero eSIM
+aloSIM
+
+# Carrier VoIP Services (often flagged)
+T-Mobile DIGITS
+Verizon Messages+
+AT&T NumberSync
+Sprint Magic Box
+
+# Virtual Number Providers
+eVoice
+Grasshopper
+MightyCall
+Talkroute
+CallHippo
+VirtualPhone.com
+FreedomVoice
+UniTel Voice
+VoIP.ms
+Callcentric
+Flowroute
+
+# Wholesale VoIP (backend for many services)
+Inteliquent
+Lumen
+Level 3
+Peerless Network
+Telnyx
+Plivo
+Sinch
+Nexmo
+MessageBird
+Signalwire
+
+# Known suspicious/burner providers
+Burner
+Hushed
+CoverMe
+Phoner
+Sonetel
+Fake Number
+Temp Number
+Receive SMS
+Free Virtual Number

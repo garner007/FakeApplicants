@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    container_name: applicant_validator_dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/workspace:cached
+      - venv_cache:/workspace/.venv
+      - uv_cache:/home/vscode/.cache/uv
+    command: sleep infinity
+    environment:
+      DATABASE_URL: postgresql+asyncpg://applicant_validator:dev_password_change_me@postgres:5432/applicant_validator
+      APP_ENV: development
+      LOG_LEVEL: DEBUG
+      DEBUG_MODE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: applicant_validator_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: applicant_validator
+      POSTGRES_PASSWORD: dev_password_change_me
+      POSTGRES_DB: applicant_validator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U applicant_validator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+
+volumes:
+  venv_cache:
+  uv_cache:
+  postgres_data:

@@ -1,0 +1,56 @@
+{
+  "name": "Applicant Validator Dev",
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.dev.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+          }
+        },
+        "ruff.path": ["/workspace/.venv/bin/ruff"],
+        "mypy-type-checker.path": ["/workspace/.venv/bin/mypy"]
+      }
+    }
+  },
+
+  "forwardPorts": [8000, 5432, 5050],
+  "portsAttributes": {
+    "8000": {"label": "API Server"},
+    "5432": {"label": "PostgreSQL"},
+    "5050": {"label": "pgAdmin"}
+  },
+
+  "postCreateCommand": "uv sync --all-extras && uv run pre-commit install",
+  "postStartCommand": "uv run alembic upgrade head || true",
+
+  "remoteUser": "vscode",
+
+  "containerEnv": {
+    "DATABASE_URL": "postgresql+asyncpg://applicant_validator:dev_password_change_me@postgres:5432/applicant_validator"
+  }
+}
