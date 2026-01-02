@@ -38,14 +38,15 @@
     }
   },
 
-  "forwardPorts": [8000, 5432, 5050],
+  "forwardPorts": [3000, 8000, 5432, 5050],
   "portsAttributes": {
+    "3000": {"label": "Frontend (Next.js)"},
     "8000": {"label": "API Server"},
     "5432": {"label": "PostgreSQL"},
     "5050": {"label": "pgAdmin"}
   },
 
-  "postCreateCommand": "uv sync --all-extras && uv run pre-commit install",
+  "postCreateCommand": "uv sync --all-extras && uv run pre-commit install && cd frontend && npm install",
   "postStartCommand": "uv run alembic upgrade head || true",
 
   "remoteUser": "vscode",
