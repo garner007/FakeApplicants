@@ -40,7 +40,10 @@ class ApplicantResponse(BaseModel):
     reviewed_by: str | None = None
     created_at: datetime
     updated_at: datetime
+    lever_created_at: datetime | None = None
     flags: list[FlagResponse] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    assigned_ta: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -59,7 +62,10 @@ class ApplicantListResponse(BaseModel):
     is_reviewed: bool = False
     reviewed_at: datetime | None = None
     created_at: datetime
+    lever_created_at: datetime | None = None
     flags: list[FlagResponse] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    assigned_ta: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -79,3 +85,15 @@ class ApplicantUpdateRequest(BaseModel):
 
     is_reviewed: bool | None = None
     reviewed_by: str | None = None
+
+
+class TAListResponse(BaseModel):
+    """Response with list of assigned TAs."""
+
+    tas: list[str] = Field(default_factory=list)
+
+
+class SourceListResponse(BaseModel):
+    """Response with list of applicant sources."""
+
+    sources: list[str] = Field(default_factory=list)

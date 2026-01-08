@@ -189,6 +189,8 @@ class Applicant(Base, TimestampMixin, SoftDeleteMixin):
         DateTime(timezone=True),
         nullable=True,
     )
+    lever_owner_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lever_owner_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Validation summary (denormalized for quick queries)
     risk_level: Mapped[str | None] = mapped_column(
@@ -906,3 +908,301 @@ class AuditLogChange(Base):
 
     # Relationships
     audit_log: Mapped["AuditLog"] = relationship(back_populates="changes")
+
+
+# =============================================================================
+# Validation Data Tables
+# =============================================================================
+
+
+class DataSourceType(str, Enum):
+    """Source of validation data."""
+
+    EXTERNAL_LIST = "external_list"  # From GitHub or other external source
+    CUSTOM = "custom"  # Manually added by user
+    API = "api"  # From API lookup
+
+
+class DisposableEmailDomain(Base, TimestampMixin):
+    """Known disposable email domains.
+
+    This table stores domains from disposable email providers.
+    Can be populated from external lists or manually added.
+    """
+
+    __tablename__ = "disposable_email_domains"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Domain
+    domain: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Source tracking
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default=DataSourceType.EXTERNAL_LIST.value,
+        nullable=False,
+    )
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Notes
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (Index("ix_disposable_domains_active", domain, is_active),)
+
+
+class VoIPCarrier(Base, TimestampMixin):
+    """Known VoIP carrier names/patterns.
+
+    Stores carrier names that indicate VoIP service.
+    Used for pattern matching against carrier lookup results.
+    """
+
+    __tablename__ = "voip_carriers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Carrier name or pattern
+    name: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Whether this is an exact match or substring match
+    match_type: Mapped[str] = mapped_column(
+        String(50),
+        default="substring",
+        nullable=False,
+    )  # exact, substring, regex
+
+    # Source tracking
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default=DataSourceType.CUSTOM.value,
+        nullable=False,
+    )
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Confidence level (how confident we are this is VoIP)
+    confidence: Mapped[str] = mapped_column(
+        String(50),
+        default="high",
+        nullable=False,
+    )  # high, medium, low
+
+    # Notes
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class VoIPAreaCode(Base, TimestampMixin):
+    """Known VoIP area codes.
+
+    Stores area codes commonly used by VoIP services.
+    """
+
+    __tablename__ = "voip_area_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Area code (3 digits for US)
+    area_code: Mapped[str] = mapped_column(
+        String(10),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Country code
+    country_code: Mapped[str] = mapped_column(
+        String(5),
+        default="1",
+        nullable=False,
+    )  # 1 for US/Canada
+
+    # Description
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Source tracking
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default=DataSourceType.CUSTOM.value,
+        nullable=False,
+    )
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Notes
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ValidationDataSync(Base, TimestampMixin):
+    """Tracks synchronization of validation data from external sources."""
+
+    __tablename__ = "validation_data_syncs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # What was synced
+    data_type: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+    )  # disposable_domains, voip_carriers, etc.
+
+    # Source info
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Sync results
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="pending",
+        nullable=False,
+    )  # pending, running, completed, failed
+    records_added: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    records_updated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    records_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Timing
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Error tracking
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# =============================================================================
+# Integration Settings Models
+# =============================================================================
+
+
+class IntegrationProvider(str, Enum):
+    """Supported integration providers."""
+
+    IPQUALITYSCORE = "ipqualityscore"
+    TWILIO = "twilio"
+    LEVER = "lever"
+    LINKEDIN = "linkedin"
+
+
+class IntegrationSetting(Base, TimestampMixin):
+    """Stores API integration settings and credentials.
+
+    Note: API keys are stored in the database for convenience.
+    In production, consider using a secrets manager or encryption.
+    """
+
+    __tablename__ = "integration_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Provider identification
+    provider: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Display name for UI
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Is this integration enabled?
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # API credentials (stored as key-value pairs in JSON-like structure)
+    # For simple cases, we use separate columns
+    api_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    api_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Additional configuration (JSON string for flexibility)
+    config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Validation settings
+    fraud_score_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Status tracking
+    last_test_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_test_success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_test_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Usage tracking
+    monthly_usage: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    monthly_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage_reset_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Notes
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<IntegrationSetting {self.provider} enabled={self.is_enabled}>"
+
+    @property
+    def has_credentials(self) -> bool:
+        """Check if credentials are configured."""
+        return bool(self.api_key or self.api_secret or self.account_id)
+
+    @property
+    def masked_api_key(self) -> str | None:
+        """Return masked API key for display."""
+        if not self.api_key:
+            return None
+        if len(self.api_key) <= 8:
+            return "****"
+        return f"{self.api_key[:4]}...{self.api_key[-4:]}"
+
+    @property
+    def masked_api_secret(self) -> str | None:
+        """Return masked API secret for display."""
+        if not self.api_secret:
+            return None
+        if len(self.api_secret) <= 8:
+            return "****"
+        return f"{self.api_secret[:4]}...{self.api_secret[-4:]}"

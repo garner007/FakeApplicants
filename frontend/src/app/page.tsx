@@ -2,8 +2,18 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { ApplicantsTable } from "@/components/applicants-table";
+import { RevalidateFilterPanel } from "@/components/revalidate-panel";
+import { SyncPanel } from "@/components/sync-panel";
+import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
-import { fetchApplicants } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { fetchApplicants, getTAs, getSources } from "@/lib/api";
 import type { Applicant, SortField, SortOrder } from "@/lib/types";
 
 export default function Home() {
@@ -15,6 +25,10 @@ export default function Home() {
   const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState<SortField>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [tas, setTAs] = useState<string[]>([]);
+  const [selectedTa, setSelectedTa] = useState<string>("");
+  const [sources, setSources] = useState<string[]>([]);
+  const [selectedSource, setSelectedSource] = useState<string>("");
 
   const loadApplicants = useCallback(async () => {
     setLoading(true);
@@ -25,6 +39,8 @@ export default function Home() {
         pageSize: 20,
         sortBy,
         sortOrder,
+        assignedTa: selectedTa || undefined,
+        source: selectedSource || undefined,
       });
       setApplicants(response.items);
       setTotalPages(response.total_pages);
@@ -34,11 +50,37 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [page, sortBy, sortOrder]);
+  }, [page, sortBy, sortOrder, selectedTa, selectedSource]);
+
+  const loadTAs = useCallback(async () => {
+    try {
+      const taList = await getTAs();
+      setTAs(taList);
+    } catch (err) {
+      console.error("Failed to load TAs:", err);
+    }
+  }, []);
+
+  const loadSources = useCallback(async () => {
+    try {
+      const sourceList = await getSources();
+      setSources(sourceList);
+    } catch (err) {
+      console.error("Failed to load sources:", err);
+    }
+  }, []);
 
   useEffect(() => {
     loadApplicants();
   }, [loadApplicants]);
+
+  useEffect(() => {
+    loadTAs();
+  }, [loadTAs]);
+
+  useEffect(() => {
+    loadSources();
+  }, [loadSources]);
 
   const handleSort = (field: SortField) => {
     if (field === sortBy) {
@@ -50,15 +92,31 @@ export default function Home() {
     setPage(1);
   };
 
+  const handleTaChange = (value: string) => {
+    setSelectedTa(value === "all" ? "" : value);
+    setPage(1);
+  };
+
+  const handleSourceChange = (value: string) => {
+    setSelectedSource(value === "all" ? "" : value);
+    setPage(1);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <Header />
       <div className="container mx-auto py-8 px-4">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Applicant Validator</h1>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Applicants</h1>
           <p className="text-gray-600 mt-2">
             Review and validate job applicants for potential fraud indicators.
           </p>
-        </header>
+        </div>
+
+        <div className="mb-6 space-y-4">
+          <SyncPanel onSyncComplete={loadApplicants} onRevalidateComplete={loadApplicants} />
+          <RevalidateFilterPanel onRevalidateComplete={loadApplicants} />
+        </div>
 
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700">
@@ -75,9 +133,43 @@ export default function Home() {
         )}
 
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm text-gray-600">
-            {loading ? "Loading..." : `${total} applicants found`}
-          </p>
+          <div className="flex items-center gap-4">
+            <p className="text-sm text-gray-600">
+              {loading ? "Loading..." : `${total} applicants found`}
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Filter by TA:</span>
+              <Select value={selectedTa || "all"} onValueChange={handleTaChange}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All TAs" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All TAs</SelectItem>
+                  {tas.map((ta) => (
+                    <SelectItem key={ta} value={ta}>
+                      {ta}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Filter by Source:</span>
+              <Select value={selectedSource || "all"} onValueChange={handleSourceChange}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All Sources" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  {sources.map((source) => (
+                    <SelectItem key={source} value={source}>
+                      {source}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
 
         {loading && applicants.length === 0 ? (

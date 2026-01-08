@@ -83,7 +83,10 @@ export function ApplicantsTable({
     { field: "name", label: "Name" },
     { field: "risk_level", label: "Risk Level" },
     { field: "flag_count", label: "Flags" },
-    { field: "created_at", label: "Created" },
+    { field: "sources", label: "Sources" },
+    { field: "assigned_ta", label: "Assigned TA" },
+    { field: "lever_created_at", label: "Application Date" },
+    { field: "created_at", label: "Date Loaded" },
   ];
 
   return (
@@ -111,7 +114,7 @@ export function ApplicantsTable({
         <TableBody>
           {applicants.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                 No applicants found.
               </TableCell>
             </TableRow>
@@ -150,6 +153,29 @@ export function ApplicantsTable({
                   ) : (
                     <span className="text-muted-foreground">0</span>
                   )}
+                </TableCell>
+                <TableCell>
+                  {applicant.sources && applicant.sources.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {applicant.sources.map((source, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {source}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {applicant.assigned_ta ? (
+                    <span className="text-sm">{applicant.assigned_ta}</span>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {applicant.lever_created_at ? formatDate(applicant.lever_created_at) : "-"}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatDate(applicant.created_at)}

@@ -55,11 +55,29 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Get an async database session.
+    """Get an async database session (context manager version).
 
     Usage:
         async with get_session() as session:
             result = await session.execute(...)
+    """
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Get an async database session for FastAPI dependency injection.
+
+    Usage with FastAPI:
+        @router.get("/")
+        async def endpoint(session: AsyncSession = Depends(get_db_session)):
+            ...
     """
     session_factory = get_session_factory()
     async with session_factory() as session:

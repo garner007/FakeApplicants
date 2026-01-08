@@ -1,7 +1,9 @@
 """Phone validation rules."""
 
+import logging
+import re
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import phonenumbers
 from phonenumbers import carrier, phonenumberutil
@@ -13,23 +15,45 @@ from applicant_validator.validators.base import (
     ValidationRule,
 )
 
+if TYPE_CHECKING:
+    from applicant_validator.clients.ipqualityscore import PhoneValidationResult
+
+logger = logging.getLogger(__name__)
+
 
 class VoIPPhoneRule(ValidationRule):
     """Validates that phone number is not from a known VoIP carrier.
 
-    This rule uses the phonenumbers library to parse and analyze phone
-    numbers, checking the carrier against a list of known VoIP providers.
+    This rule uses multiple methods to detect VoIP numbers (in order):
+    1. IPQualityScore API (if enabled) - most comprehensive, includes fraud score
+    2. Twilio Lookup API (if enabled) - real-time carrier type detection
+    3. Database of known VoIP carrier patterns
+    4. Database of known VoIP area codes
+
+    Falls back to local data if database/APIs are not available.
     """
 
     name = "voip_phone"
     description = "Check if phone number is from a VoIP carrier"
     category = "phone"
     default_severity = RuleSeverity.MEDIUM
-    version = "1.0.0"
+    version = "2.1.0"  # Updated for IPQualityScore support
+    checks_fields: ClassVar[list[str]] = ["phone"]
+    trigger_examples: ClassVar[list[str]] = [
+        "Google Voice numbers",
+        "Twilio-provided numbers",
+        "TextNow numbers",
+        "Numbers with VoIP area codes (456, 500, etc.)",
+    ]
+    rationale = (
+        "VoIP (Voice over IP) phone numbers are internet-based and can be easily created "
+        "and disposed of. While many legitimate users have VoIP numbers, they are also "
+        "commonly used by fraudulent applicants to maintain anonymity. "
+        "This is a medium-severity flag as VoIP usage alone is not conclusive."
+    )
 
-    # Known VoIP area codes in the US
-    # These are area codes commonly used by VoIP services
-    VOIP_AREA_CODES: ClassVar[set[str]] = {
+    # Fallback VoIP area codes if database not available
+    DEFAULT_VOIP_AREA_CODES: ClassVar[set[str]] = {
         "456",  # Inbound international
         "500",  # Personal Communications Services
         "521",  # Reserved
@@ -42,56 +66,290 @@ class VoIPPhoneRule(ValidationRule):
     }
 
     def __init__(self) -> None:
-        """Initialize the rule and load VoIP carriers."""
-        self._voip_carriers: set[str] = set()
-        self._load_voip_carriers()
+        """Initialize the rule."""
+        self._voip_carriers: list[dict[str, Any]] | None = None
+        self._voip_area_codes: set[str] | None = None
+        self._use_database: bool = True
+        self._twilio_client: Any | None = None
+        self._twilio_checked: bool = False
+        self._ipqs_checked: bool = False
+        self._ipqs_enabled: bool | None = None
 
-    def _load_voip_carriers(self) -> None:
-        """Load VoIP carrier names from the data file."""
+    async def _is_ipqs_enabled(self) -> bool:
+        """Check if IPQualityScore is enabled and configured.
+
+        Checks database settings first, falls back to environment variables.
+        """
+        if self._ipqs_checked:
+            return self._ipqs_enabled or False
+
+        self._ipqs_checked = True
+
+        # Try database settings first
+        try:
+            from applicant_validator.database.base import get_session
+            from applicant_validator.services.integration_settings import (
+                get_integration_settings_service,
+            )
+
+            async for session in get_session():
+                service = await get_integration_settings_service(session)
+                self._ipqs_enabled = await service.is_enabled("ipqualityscore")
+
+                if self._ipqs_enabled:
+                    logger.info("IPQualityScore is enabled via database settings")
+                    return True
+
+        except Exception as e:
+            logger.debug(f"Could not check IPQS database settings: {e}")
+
+        # Fall back to environment variables
+        try:
+            from applicant_validator.config import get_settings
+
+            settings = get_settings()
+            self._ipqs_enabled = (
+                settings.ipqualityscore_enabled and settings.has_ipqualityscore_credentials
+            )
+
+            if self._ipqs_enabled:
+                logger.info("IPQualityScore is enabled via environment variables")
+            else:
+                logger.debug("IPQualityScore not enabled or API key not configured")
+
+            return self._ipqs_enabled
+
+        except Exception as e:
+            logger.warning(f"Could not check IPQualityScore config: {e}")
+            self._ipqs_enabled = False
+            return False
+
+    async def _lookup_with_ipqs(self, phone_number: str) -> "PhoneValidationResult | None":
+        """Perform IPQualityScore lookup for phone validation.
+
+        Args:
+            phone_number: E.164 formatted phone number.
+
+        Returns:
+            PhoneValidationResult or None if lookup fails/not configured.
+        """
+        if not await self._is_ipqs_enabled():
+            return None
+
+        try:
+            from applicant_validator.clients.ipqualityscore import (
+                validate_phone_with_ipqs,
+            )
+
+            result = await validate_phone_with_ipqs(phone_number)
+            return result
+
+        except Exception as e:
+            logger.warning(f"IPQualityScore lookup failed: {e}")
+            return None
+
+    async def _get_twilio_client(self) -> Any | None:  # noqa: PLR0911
+        """Get Twilio client if configured and enabled.
+
+        Checks database settings first, falls back to environment variables.
+        """
+        if self._twilio_checked:
+            return self._twilio_client
+
+        self._twilio_checked = True
+
+        # Try database settings first
+        try:
+            from applicant_validator.database.base import get_session
+            from applicant_validator.services.integration_settings import (
+                get_integration_settings_service,
+            )
+
+            async for session in get_session():
+                service = await get_integration_settings_service(session)
+                credentials = await service.get_credentials("twilio")
+
+                if credentials and credentials.get("account_id") and credentials.get("api_secret"):
+                    from twilio.rest import Client
+
+                    self._twilio_client = Client(
+                        credentials["account_id"],
+                        credentials["api_secret"],
+                    )
+                    logger.info("Twilio client initialized from database settings")
+                    return self._twilio_client
+
+        except ImportError:
+            logger.warning("Twilio library not installed, skipping Twilio lookup")
+            return None
+        except Exception as e:
+            logger.debug(f"Could not get Twilio from database: {e}")
+
+        # Fall back to environment variables
+        try:
+            from applicant_validator.config import get_settings
+
+            settings = get_settings()
+
+            if not settings.twilio_enabled or not settings.has_twilio_credentials:
+                logger.debug("Twilio not enabled or credentials not configured")
+                return None
+
+            from twilio.rest import Client
+
+            self._twilio_client = Client(
+                settings.twilio_account_sid,
+                settings.twilio_auth_token,
+            )
+            logger.info("Twilio client initialized from environment variables")
+            return self._twilio_client
+
+        except ImportError:
+            logger.warning("Twilio library not installed, skipping Twilio lookup")
+            return None
+        except Exception as e:
+            logger.warning(f"Could not initialize Twilio client: {e}")
+            return None
+
+    async def _load_voip_carriers(self) -> list[dict[str, Any]]:
+        """Load VoIP carrier patterns from database or fallback.
+
+        Returns:
+            List of carrier pattern dictionaries.
+        """
+        if self._voip_carriers is not None:
+            return self._voip_carriers
+
+        # Try database first
+        if self._use_database:
+            try:
+                from applicant_validator.services.validation_data import (
+                    get_validation_data_service,
+                )
+
+                service = get_validation_data_service()
+                carriers = await service.get_voip_carriers()
+
+                if carriers:
+                    self._voip_carriers = carriers
+                    logger.info(f"Loaded {len(carriers)} VoIP carriers from database")
+                    return self._voip_carriers
+                else:
+                    logger.warning("No VoIP carriers in database, falling back to file")
+            except Exception as e:
+                logger.warning(f"Could not load carriers from database, falling back to file: {e}")
+                self._use_database = False
+
+        # Fallback to file
+        self._voip_carriers = self._load_carriers_from_file()
+        return self._voip_carriers
+
+    def _load_carriers_from_file(self) -> list[dict[str, Any]]:
+        """Load VoIP carrier names from the data file (fallback)."""
         data_file = Path(__file__).parent.parent / "data" / "voip_carriers.txt"
+        carriers: list[dict[str, Any]] = []
 
         if not data_file.exists():
             # Fall back to a minimal set if file doesn't exist
-            self._voip_carriers = {
-                "google voice",
-                "twilio",
-                "bandwidth",
-                "vonage",
-                "ringcentral",
-            }
-            return
+            logger.warning("VoIP carriers file not found, using minimal fallback set")
+            for name in ["google voice", "twilio", "bandwidth", "vonage", "ringcentral"]:
+                carriers.append(
+                    {
+                        "name": name,
+                        "match_type": "substring",
+                        "confidence": "high",
+                    }
+                )
+            return carriers
 
         with data_file.open(encoding="utf-8") as f:
             for raw_line in f:
                 stripped = raw_line.strip()
                 # Skip empty lines and comments
                 if stripped and not stripped.startswith("#"):
-                    self._voip_carriers.add(stripped.lower())
+                    carriers.append(
+                        {
+                            "name": stripped.lower(),
+                            "match_type": "substring",
+                            "confidence": "high",
+                        }
+                    )
 
-    def _is_voip_carrier(self, carrier_name: str) -> bool:
-        """Check if the carrier name matches a known VoIP provider."""
+        logger.info(f"Loaded {len(carriers)} VoIP carriers from file")
+        return carriers
+
+    async def _load_voip_area_codes(self) -> set[str]:
+        """Load VoIP area codes from database or fallback.
+
+        Returns:
+            Set of VoIP area code strings.
+        """
+        if self._voip_area_codes is not None:
+            return self._voip_area_codes
+
+        # Try database first
+        if self._use_database:
+            try:
+                from applicant_validator.services.validation_data import (
+                    get_validation_data_service,
+                )
+
+                service = get_validation_data_service()
+                codes = await service.get_voip_area_codes()
+
+                if codes:
+                    self._voip_area_codes = codes
+                    logger.info(f"Loaded {len(codes)} VoIP area codes from database")
+                    return self._voip_area_codes
+                else:
+                    logger.warning("No VoIP area codes in database, using defaults")
+            except Exception as e:
+                logger.warning(f"Could not load area codes from database: {e}")
+
+        # Fallback to default set
+        self._voip_area_codes = self.DEFAULT_VOIP_AREA_CODES.copy()
+        return self._voip_area_codes
+
+    async def _is_voip_carrier(self, carrier_name: str) -> tuple[bool, str | None]:
+        """Check if the carrier name matches a known VoIP provider.
+
+        Args:
+            carrier_name: Carrier name from lookup.
+
+        Returns:
+            Tuple of (is_voip, matched_pattern).
+        """
         if not carrier_name:
-            return False
+            return False, None
 
         carrier_lower = carrier_name.lower()
+        carriers = await self._load_voip_carriers()
 
-        # Check for exact match
-        if carrier_lower in self._voip_carriers:
-            return True
+        for carrier_pattern in carriers:
+            pattern_name = carrier_pattern["name"]
+            match_type = carrier_pattern.get("match_type", "substring")
 
-        # Check for partial match (e.g., "Twilio, Inc." contains "twilio")
-        for voip_carrier in self._voip_carriers:
-            if voip_carrier in carrier_lower or carrier_lower in voip_carrier:
-                return True
+            if match_type == "exact":
+                if carrier_lower == pattern_name:
+                    return True, pattern_name
+            elif match_type == "substring":
+                if pattern_name in carrier_lower or carrier_lower in pattern_name:
+                    return True, pattern_name
+            elif match_type == "regex" and re.search(pattern_name, carrier_lower):
+                return True, pattern_name
 
-        return False
+        return False, None
 
-    def _is_voip_area_code(self, phone_number: phonenumbers.PhoneNumber) -> str | None:
+    async def _is_voip_area_code(self, phone_number: phonenumbers.PhoneNumber) -> str | None:
         """Check if the phone number uses a known VoIP area code.
 
-        Returns the area code if it's a VoIP code, None otherwise.
+        Args:
+            phone_number: Parsed phone number.
+
+        Returns:
+            The area code if it's a VoIP code, None otherwise.
         """
-        # Only check US numbers
+        # Only check US/Canada numbers
         if phone_number.country_code != 1:
             return None
 
@@ -99,13 +357,50 @@ class VoIPPhoneRule(ValidationRule):
         national_number = str(phone_number.national_number)
         if len(national_number) >= 3:
             area_code = national_number[:3]
-            if area_code in self.VOIP_AREA_CODES:
+            voip_codes = await self._load_voip_area_codes()
+            if area_code in voip_codes:
                 return area_code
 
         return None
 
-    async def validate(self, data: dict[str, Any]) -> RuleResult:  # noqa: PLR0911
+    async def _lookup_with_twilio(self, phone_number: str) -> dict[str, Any] | None:
+        """Perform Twilio Lookup to get carrier type.
+
+        Args:
+            phone_number: E.164 formatted phone number.
+
+        Returns:
+            Dictionary with carrier info or None.
+        """
+        client = await self._get_twilio_client()
+        if not client:
+            return None
+
+        try:
+            # Twilio Lookup API call
+            lookup = client.lookups.v1.phone_numbers(phone_number).fetch(type=["carrier"])
+
+            if lookup.carrier:
+                carrier_info = lookup.carrier
+                return {
+                    "carrier_name": carrier_info.get("name"),
+                    "carrier_type": carrier_info.get("type"),  # voip, landline, mobile
+                    "mobile_country_code": carrier_info.get("mobile_country_code"),
+                    "mobile_network_code": carrier_info.get("mobile_network_code"),
+                }
+        except Exception as e:
+            logger.warning(f"Twilio lookup failed: {e}")
+
+        return None
+
+    async def validate(self, data: dict[str, Any]) -> RuleResult:  # noqa: PLR0911, PLR0912, PLR0915
         """Validate that the phone number is not from a VoIP carrier.
+
+        Uses multiple detection methods (in order of accuracy):
+        1. IPQualityScore API (if configured) - most comprehensive with fraud score
+        2. Twilio Lookup API (if configured) - real-time carrier type
+        3. Phonenumbers library carrier lookup + pattern matching
+        4. VoIP area code detection
 
         Args:
             data: Dictionary containing 'phone' key.
@@ -135,9 +430,141 @@ class VoIPPhoneRule(ValidationRule):
             return RuleResult.create_skip(self.name, "Invalid phone number format")
 
         evidence: list[ValidationEvidence] = []
+        e164_number = phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
 
-        # Check for VoIP area codes (US only)
-        voip_area_code = self._is_voip_area_code(parsed_number)
+        # Method 1: Try IPQualityScore (most comprehensive)
+        ipqs_result = await self._lookup_with_ipqs(e164_number)
+        if ipqs_result:
+            # Add evidence from IPQS
+            evidence.append(
+                ValidationEvidence(
+                    evidence_type="ipqs_lookup",
+                    key="fraud_score",
+                    value=str(ipqs_result.fraud_score),
+                    description=f"IPQualityScore fraud score: {ipqs_result.fraud_score}/100",
+                )
+            )
+
+            if ipqs_result.line_type:
+                evidence.append(
+                    ValidationEvidence(
+                        evidence_type="ipqs_lookup",
+                        key="line_type",
+                        value=ipqs_result.line_type,
+                        description=f"Line type: {ipqs_result.line_type}",
+                    )
+                )
+
+            if ipqs_result.carrier:
+                evidence.append(
+                    ValidationEvidence(
+                        evidence_type="ipqs_lookup",
+                        key="carrier",
+                        value=ipqs_result.carrier,
+                        description=f"Carrier: {ipqs_result.carrier}",
+                    )
+                )
+
+            # Add risk factors as evidence
+            for risk_factor in ipqs_result.risk_factors:
+                evidence.append(
+                    ValidationEvidence(
+                        evidence_type="ipqs_risk_factor",
+                        key="risk_factor",
+                        value=risk_factor,
+                        description=risk_factor,
+                    )
+                )
+
+            # Check if IPQS flagged as VoIP
+            if ipqs_result.is_voip:
+                # Determine severity based on fraud score
+                if ipqs_result.fraud_score >= 85:
+                    severity = RuleSeverity.HIGH
+                elif ipqs_result.fraud_score >= 75:
+                    severity = RuleSeverity.MEDIUM
+                else:
+                    severity = RuleSeverity.LOW
+
+                carrier_name = ipqs_result.carrier or "unknown"
+                return RuleResult.create_fail(
+                    rule_name=self.name,
+                    message=(
+                        f"Phone number is VoIP (carrier: {carrier_name}, "
+                        f"fraud score: {ipqs_result.fraud_score})"
+                    ),
+                    severity=severity,
+                    evidence=evidence,
+                )
+
+            # Check if IPQS flagged as high risk even if not VoIP
+            if ipqs_result.is_high_risk:
+                high_risk_severity = (
+                    RuleSeverity.HIGH if ipqs_result.fraud_score >= 85 else RuleSeverity.MEDIUM
+                )
+                return RuleResult.create_fail(
+                    rule_name=self.name,
+                    message=(
+                        f"Phone number flagged as high risk "
+                        f"(fraud score: {ipqs_result.fraud_score})"
+                    ),
+                    severity=high_risk_severity,
+                    evidence=evidence,
+                )
+
+            # If IPQS says it's valid and not VoIP/risky, trust it
+            if ipqs_result.valid and not ipqs_result.is_voip and not ipqs_result.risky:
+                line_type = ipqs_result.line_type or "unknown"
+                carrier_name = ipqs_result.carrier or "unknown"
+                return RuleResult.create_pass(
+                    self.name,
+                    f"Phone number verified (type: {line_type}, "
+                    f"carrier: {carrier_name}, fraud score: {ipqs_result.fraud_score})",
+                )
+
+        # Method 2: Try Twilio Lookup (if IPQS not available)
+        twilio_result = await self._lookup_with_twilio(e164_number)
+        if twilio_result:
+            twilio_carrier_type = twilio_result.get("carrier_type", "unknown")
+            evidence.append(
+                ValidationEvidence(
+                    evidence_type="twilio_lookup",
+                    key="carrier_type",
+                    value=twilio_carrier_type,
+                    description=f"Twilio identified carrier type: {twilio_carrier_type}",
+                )
+            )
+
+            if twilio_result.get("carrier_name"):
+                evidence.append(
+                    ValidationEvidence(
+                        evidence_type="twilio_lookup",
+                        key="carrier_name",
+                        value=twilio_result["carrier_name"],
+                        description=f"Carrier: {twilio_result['carrier_name']}",
+                    )
+                )
+
+            # Twilio returns "voip" as carrier_type for VoIP numbers
+            if twilio_result.get("carrier_type") == "voip":
+                twilio_carrier_name = twilio_result.get("carrier_name", "unknown")
+                return RuleResult.create_fail(
+                    rule_name=self.name,
+                    message=f"Phone number is VoIP (carrier: {twilio_carrier_name})",
+                    severity=self.default_severity,
+                    evidence=evidence,
+                )
+
+            # If Twilio says it's mobile or landline, trust it
+            if twilio_result.get("carrier_type") in ("mobile", "landline"):
+                return RuleResult.create_pass(
+                    self.name,
+                    f"Phone number is {twilio_result['carrier_type']} "
+                    f"(carrier: {twilio_result.get('carrier_name', 'unknown')})",
+                )
+
+        # Method 3: Check for VoIP area codes (US only)
+        voip_area_code = await self._is_voip_area_code(parsed_number)
         if voip_area_code:
             evidence.append(
                 ValidationEvidence(
@@ -148,7 +575,7 @@ class VoIPPhoneRule(ValidationRule):
                 )
             )
 
-        # Try to get carrier information
+        # Method 4: Try phonenumbers library carrier lookup
         carrier_name = carrier.name_for_number(parsed_number, "en")
 
         if carrier_name:
@@ -161,13 +588,14 @@ class VoIPPhoneRule(ValidationRule):
                 )
             )
 
-            if self._is_voip_carrier(carrier_name):
+            is_voip, matched_pattern = await self._is_voip_carrier(carrier_name)
+            if is_voip:
                 evidence.append(
                     ValidationEvidence(
                         evidence_type="voip_carrier_match",
-                        key="matched_carrier",
-                        value=carrier_name,
-                        description=f"Carrier '{carrier_name}' is a known VoIP provider",
+                        key="matched_pattern",
+                        value=matched_pattern or carrier_name,
+                        description=f"Carrier '{carrier_name}' matches known VoIP provider",
                     )
                 )
 
@@ -187,10 +615,7 @@ class VoIPPhoneRule(ValidationRule):
                 evidence=evidence,
             )
 
-        # Format the number for the response
-        formatted = phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
-
         return RuleResult.create_pass(
             self.name,
-            f"Phone number {formatted} does not appear to be VoIP",
+            f"Phone number {e164_number} does not appear to be VoIP",
         )

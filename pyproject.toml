@@ -56,6 +56,11 @@ dev = [
     "pre-commit>=3.6.0",
 ]
 
+# Optional Twilio support for enhanced VoIP detection
+twilio = [
+    "twilio>=8.0.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/yourorg/lever-linkedin-applicant-validator"
 Documentation = "https://github.com/yourorg/lever-linkedin-applicant-validator#readme"

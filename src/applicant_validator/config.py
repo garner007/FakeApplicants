@@ -82,6 +82,35 @@ class Settings(BaseSettings):
         default=5, description="Max requests per second to LinkedIn API"
     )
 
+    # Twilio Configuration (optional - for VoIP carrier lookup)
+    twilio_account_sid: str = Field(default="", description="Twilio Account SID")
+    twilio_auth_token: str = Field(default="", description="Twilio Auth Token")
+    twilio_enabled: bool = Field(
+        default=False,
+        description="Enable Twilio Lookup API for VoIP detection (has per-lookup cost)",
+    )
+
+    # IPQualityScore Configuration (optional - for phone validation and fraud detection)
+    ipqualityscore_api_key: str = Field(default="", description="IPQualityScore API key")
+    ipqualityscore_enabled: bool = Field(
+        default=False,
+        description="Enable IPQualityScore for phone validation (1,000 free lookups/month)",
+    )
+    ipqualityscore_fraud_score_threshold: int = Field(
+        default=85,
+        description="Fraud score threshold (0-100) above which to flag as suspicious",
+    )
+
+    @property
+    def has_twilio_credentials(self) -> bool:
+        """Check if Twilio credentials are configured."""
+        return bool(self.twilio_account_sid and self.twilio_auth_token)
+
+    @property
+    def has_ipqualityscore_credentials(self) -> bool:
+        """Check if IPQualityScore API key is configured."""
+        return bool(self.ipqualityscore_api_key)
+
     @property
     def lever_base_url(self) -> str:
         """Get the Lever API base URL based on environment."""

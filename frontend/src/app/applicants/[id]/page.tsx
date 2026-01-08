@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -111,8 +111,11 @@ export default function ApplicantDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading applicant...</p>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading applicant...</p>
+        </div>
       </div>
     );
   }
@@ -120,6 +123,7 @@ export default function ApplicantDetailPage() {
   if (error || !applicant) {
     return (
       <div className="min-h-screen bg-gray-50">
+        <Header />
         <div className="container mx-auto py-8 px-4">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-red-700">{error || "Applicant not found"}</p>
@@ -136,13 +140,8 @@ export default function ApplicantDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Header />
       <div className="container mx-auto py-8 px-4 max-w-4xl">
-        {/* Header */}
-        <div className="mb-6">
-          <Link href="/" className="text-sm text-blue-600 hover:underline">
-            &larr; Back to Applicants
-          </Link>
-        </div>
 
         {/* Main Card */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">

@@ -5,6 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from applicant_validator.api.routes.applicants import router as applicants_router
+from applicant_validator.api.routes.revalidate import router as revalidate_router
+from applicant_validator.api.routes.rules import router as rules_router
+from applicant_validator.api.routes.settings import router as settings_router
+from applicant_validator.api.routes.sync import router as sync_router
+from applicant_validator.api.routes.validation_data import router as validation_data_router
 from applicant_validator.config import get_settings
 
 settings = get_settings()
@@ -29,6 +34,11 @@ app.add_middleware(
 
 # Include routers
 app.include_router(applicants_router, prefix="/api")
+app.include_router(revalidate_router, prefix="/api")
+app.include_router(rules_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
+app.include_router(sync_router, prefix="/api")
+app.include_router(validation_data_router, prefix="/api")
 
 
 @app.get("/health")

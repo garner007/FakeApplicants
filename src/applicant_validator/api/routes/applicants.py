@@ -14,8 +14,10 @@ from applicant_validator.api.schemas.applicants import (
     ApplicantUpdateRequest,
     FlagResponse,
     PaginatedApplicantsResponse,
+    SourceListResponse,
+    TAListResponse,
 )
-from applicant_validator.database import Applicant, Flag, get_session
+from applicant_validator.database import Applicant, ApplicantSource, Flag, get_session
 
 router = APIRouter(prefix="/applicants", tags=["applicants"])
 
@@ -48,7 +50,10 @@ def _applicant_to_list_response(applicant: Applicant) -> ApplicantListResponse:
         is_reviewed=applicant.is_reviewed,
         reviewed_at=applicant.reviewed_at,
         created_at=applicant.created_at,
+        lever_created_at=applicant.lever_created_at,
         flags=[_flag_to_response(f) for f in applicant.flags if f.is_active],
+        sources=[s.source for s in applicant.sources],
+        assigned_ta=applicant.lever_owner_name,
     )
 
 
@@ -70,7 +75,10 @@ def _applicant_to_response(applicant: Applicant) -> ApplicantResponse:
         reviewed_by=applicant.reviewed_by,
         created_at=applicant.created_at,
         updated_at=applicant.updated_at,
+        lever_created_at=applicant.lever_created_at,
         flags=[_flag_to_response(f) for f in applicant.flags if f.is_active],
+        sources=[s.source for s in applicant.sources],
+        assigned_ta=applicant.lever_owner_name,
     )
 
 
@@ -78,12 +86,14 @@ def _applicant_to_response(applicant: Applicant) -> ApplicantResponse:
 async def list_applicants(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    sort_by: Literal["created_at", "updated_at", "name", "risk_level", "flag_count"] = Query(
-        "created_at", description="Field to sort by"
-    ),
+    sort_by: Literal[
+        "created_at", "updated_at", "name", "risk_level", "flag_count", "lever_created_at"
+    ] = Query("created_at", description="Field to sort by"),
     sort_order: Literal["asc", "desc"] = Query("desc", description="Sort order"),
     risk_level: str | None = Query(None, description="Filter by risk level"),
     is_reviewed: bool | None = Query(None, description="Filter by review status"),
+    assigned_ta: str | None = Query(None, description="Filter by assigned TA name"),
+    source: str | None = Query(None, description="Filter by applicant source"),
 ) -> PaginatedApplicantsResponse:
     """List all applicants with pagination and sorting."""
     async with get_session() as session:
@@ -95,6 +105,15 @@ async def list_applicants(
             query = query.where(Applicant.risk_level == risk_level)
         if is_reviewed is not None:
             query = query.where(Applicant.is_reviewed == is_reviewed)
+        if assigned_ta:
+            query = query.where(Applicant.lever_owner_name == assigned_ta)
+        if source:
+            # Join with ApplicantSource to filter by source
+            query = query.where(
+                Applicant.id.in_(
+                    select(ApplicantSource.applicant_id).where(ApplicantSource.source == source)
+                )
+            )
 
         # Get total count
         count_query = select(func.count()).select_from(query.subquery())
@@ -128,6 +147,32 @@ async def list_applicants(
             page_size=page_size,
             total_pages=total_pages,
         )
+
+
+@router.get("/tas", response_model=TAListResponse)
+async def list_tas() -> TAListResponse:
+    """Get list of unique assigned TAs for filtering."""
+    async with get_session() as session:
+        query = (
+            select(Applicant.lever_owner_name)
+            .where(Applicant.is_deleted == False)  # noqa: E712
+            .where(Applicant.lever_owner_name.isnot(None))
+            .distinct()
+            .order_by(Applicant.lever_owner_name)
+        )
+        result = await session.execute(query)
+        tas = [row[0] for row in result.fetchall()]
+        return TAListResponse(tas=tas)
+
+
+@router.get("/sources", response_model=SourceListResponse)
+async def list_sources() -> SourceListResponse:
+    """Get list of unique applicant sources for filtering."""
+    async with get_session() as session:
+        query = select(ApplicantSource.source).distinct().order_by(ApplicantSource.source)
+        result = await session.execute(query)
+        sources = [row[0] for row in result.fetchall()]
+        return SourceListResponse(sources=sources)
 
 
 @router.get("/{applicant_id}", response_model=ApplicantResponse)

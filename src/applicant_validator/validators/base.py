@@ -86,6 +86,10 @@ class ValidationRule(ABC):
     category: str = "other"
     default_severity: RuleSeverity = RuleSeverity.MEDIUM
     version: str = "1.0.0"
+    # Additional metadata for documentation
+    checks_fields: list[str] = []  # Which applicant fields this rule examines
+    trigger_examples: list[str] = []  # Examples of what triggers this rule
+    rationale: str = ""  # Why this check matters
 
     @abstractmethod
     async def validate(self, data: dict[str, Any]) -> RuleResult:
