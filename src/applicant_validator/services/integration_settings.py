@@ -56,6 +56,7 @@ class IntegrationSettingsService:
         account_id: str | None = None,
         fraud_score_threshold: int | None = None,
         notes: str | None = None,
+        config_json: str | None = None,
     ) -> IntegrationSetting:
         """Update integration settings.
 
@@ -67,6 +68,7 @@ class IntegrationSettingsService:
             account_id: Account ID (pass empty string to clear).
             fraud_score_threshold: Fraud score threshold (for IPQS).
             notes: Notes about this integration.
+            config_json: JSON configuration (provider-specific settings).
 
         Returns:
             Updated IntegrationSetting.
@@ -97,6 +99,9 @@ class IntegrationSettingsService:
         if notes is not None:
             integration.notes = notes if notes else None
 
+        if config_json is not None:
+            integration.config_json = config_json if config_json else None
+
         await self._session.commit()
         await self._session.refresh(integration)
 
@@ -126,6 +131,8 @@ class IntegrationSettingsService:
                 result = await self._test_ipqualityscore(integration)
             elif provider == IntegrationProvider.TWILIO.value:
                 result = await self._test_twilio(integration)
+            elif provider == IntegrationProvider.LEVER.value:
+                result = await self._test_lever(integration)
             else:
                 result = {"success": False, "message": f"Testing not implemented for {provider}"}
 
@@ -218,6 +225,79 @@ class IntegrationSettingsService:
             }
         except Exception as e:
             return {"success": False, "message": str(e)}
+
+    async def _test_lever(self, integration: IntegrationSetting) -> dict[str, Any]:
+        """Test Lever integration by making a simple API call.
+
+        Args:
+            integration: Integration settings.
+
+        Returns:
+            Test result dict.
+        """
+        import base64
+        import json
+
+        import httpx
+
+        if not integration.api_key:
+            return {"success": False, "message": "API key not configured"}
+
+        # Determine environment from config_json or default to sandbox
+        environment = "sandbox"
+        if integration.config_json:
+            try:
+                config = json.loads(integration.config_json)
+                environment = config.get("environment", "sandbox")
+            except json.JSONDecodeError:
+                pass
+
+        base_url = (
+            "https://api.sandbox.lever.co/v1"
+            if environment == "sandbox"
+            else "https://api.lever.co/v1"
+        )
+
+        # Lever uses Basic Auth with API key as username and empty password
+        credentials = f"{integration.api_key}:".encode()
+        auth_value = base64.b64encode(credentials).decode()
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Test by fetching users list (lightweight endpoint)
+            response = await client.get(
+                f"{base_url}/users",
+                headers={
+                    "Authorization": f"Basic {auth_value}",
+                    "Content-Type": "application/json",
+                },
+                params={"limit": 1},
+            )
+
+            if response.status_code == 401:
+                return {"success": False, "message": "Invalid API key"}
+
+            if response.status_code == 403:
+                return {"success": False, "message": "API key lacks required permissions"}
+
+            if response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    message = error_data.get("message", f"HTTP {response.status_code}")
+                except Exception:
+                    message = f"HTTP {response.status_code}"
+                return {"success": False, "message": message}
+
+            data = response.json()
+            users = data.get("data", [])
+
+            return {
+                "success": True,
+                "message": f"API connection successful ({environment} environment)",
+                "details": {
+                    "environment": environment,
+                    "users_found": len(users),
+                },
+            }
 
     async def increment_usage(self, provider: str) -> None:
         """Increment the monthly usage counter for a provider.

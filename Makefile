@@ -1,10 +1,10 @@
 # Makefile for Applicant Validator
 # Run `make help` to see available commands
 
-.PHONY: help install install-dev test test-unit test-integration test-cov lint format typecheck check clean run dev \
+.PHONY: help install install-dev test test-unit test-integration test-cov lint lint-fix format format-check fix typecheck check clean run dev \
         docker-up docker-down docker-logs docker-shell docker-db-shell docker-reset db-migrate db-upgrade db-downgrade db-seed db-seed-flags db-seed-applicants \
-        dev-shell dev-fix-permissions dev-db-migrate dev-db-upgrade dev-db-downgrade dev-db-history dev-db-current dev-db-seed dev-db-seed-flags dev-db-seed-applicants dev-api dev-test dev-test-cov dev-lint dev-typecheck dev-check \
-        frontend-install frontend-dev frontend-build frontend-lint frontend-start
+        dev-shell dev-fix-permissions dev-db-migrate dev-db-upgrade dev-db-downgrade dev-db-history dev-db-current dev-db-seed dev-db-seed-flags dev-db-seed-applicants dev-api dev-test dev-test-cov dev-lint dev-fix dev-typecheck dev-check \
+        frontend-install frontend-dev frontend-build frontend-lint frontend-fix frontend-start
 
 # Default target
 .DEFAULT_GOAL := help
@@ -77,6 +77,10 @@ format: ## Format code with ruff
 
 format-check: ## Check code formatting without making changes
 	uv run ruff format src tests --check
+
+fix: ## Fix all linting and formatting issues
+	uv run ruff check src tests --fix
+	uv run ruff format src tests
 
 typecheck: ## Run mypy type checker
 	uv run mypy src
@@ -250,6 +254,9 @@ dev-test-cov: ## Run tests with coverage in dev container
 dev-lint: ## Run linter in dev container
 	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run ruff check src tests"
 
+dev-fix: ## Fix all linting and formatting issues in dev container
+	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run ruff check src tests --fix && uv run ruff format src tests"
+
 dev-typecheck: ## Run type checker in dev container
 	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run mypy src"
 
@@ -273,6 +280,9 @@ frontend-build: ## Build frontend for production
 
 frontend-lint: ## Lint frontend code
 	cd $(FRONTEND_DIR) && npm run lint
+
+frontend-fix: ## Fix frontend linting issues
+	cd $(FRONTEND_DIR) && npm run lint -- --fix
 
 frontend-start: ## Start frontend production server
 	cd $(FRONTEND_DIR) && npm run start

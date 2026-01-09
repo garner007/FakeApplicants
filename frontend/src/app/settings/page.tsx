@@ -57,6 +57,10 @@ function getProviderDocsUrl(provider: string): string | null {
       return "https://www.ipqualityscore.com/documentation/phone-number-validation-api/overview";
     case "twilio":
       return "https://www.twilio.com/docs/lookup/v2-api";
+    case "lever":
+      return "https://hire.lever.co/developer/documentation";
+    case "linkedin":
+      return "https://learn.microsoft.com/en-us/linkedin/";
     default:
       return null;
   }
@@ -84,6 +88,18 @@ function IntegrationCard({ integration, onUpdate }: IntegrationCardProps) {
   const [fraudThreshold, setFraudThreshold] = useState(
     integration.fraud_score_threshold?.toString() || "85"
   );
+  const [leverEnvironment, setLeverEnvironment] = useState(() => {
+    // Parse existing config_json to get environment
+    if (integration.config_json) {
+      try {
+        const config = JSON.parse(integration.config_json);
+        return config.environment || "sandbox";
+      } catch {
+        return "sandbox";
+      }
+    }
+    return "sandbox";
+  });
 
   const handleToggleEnabled = async () => {
     setError(null);
@@ -114,6 +130,10 @@ function IntegrationCard({ integration, onUpdate }: IntegrationCardProps) {
       }
       if (integration.provider === "ipqualityscore" && fraudThreshold) {
         updates.fraud_score_threshold = parseInt(fraudThreshold, 10);
+      }
+      if (integration.provider === "lever") {
+        // Store environment in config_json
+        updates.config_json = JSON.stringify({ environment: leverEnvironment });
       }
 
       await updateIntegration(integration.provider, updates);
@@ -322,6 +342,80 @@ function IntegrationCard({ integration, onUpdate }: IntegrationCardProps) {
                       id="auth-token"
                       type="password"
                       placeholder="Enter auth token"
+                      value={apiSecret}
+                      onChange={(e) => setApiSecret(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {integration.provider === "lever" && (
+                <>
+                  <div>
+                    <Label htmlFor="lever-api-key" className="text-sm">
+                      API Key
+                    </Label>
+                    <Input
+                      id="lever-api-key"
+                      type="password"
+                      placeholder="Enter Lever API key"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Get your API key from{" "}
+                      <a
+                        href="https://hire.lever.co/settings/integrations/api"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        Lever Settings
+                      </a>
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="lever-environment" className="text-sm">
+                      Environment
+                    </Label>
+                    <select
+                      id="lever-environment"
+                      value={leverEnvironment}
+                      onChange={(e) => setLeverEnvironment(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-input bg-transparent text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="sandbox">Sandbox</option>
+                      <option value="production">Production</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use Sandbox for testing, Production for live data.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {integration.provider === "linkedin" && (
+                <>
+                  <div>
+                    <Label htmlFor="linkedin-client-id" className="text-sm">
+                      Client ID
+                    </Label>
+                    <Input
+                      id="linkedin-client-id"
+                      type="text"
+                      placeholder="Enter LinkedIn Client ID"
+                      value={accountId}
+                      onChange={(e) => setAccountId(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="linkedin-client-secret" className="text-sm">
+                      Client Secret
+                    </Label>
+                    <Input
+                      id="linkedin-client-secret"
+                      type="password"
+                      placeholder="Enter LinkedIn Client Secret"
                       value={apiSecret}
                       onChange={(e) => setApiSecret(e.target.value)}
                     />

@@ -11,6 +11,7 @@ from sqlalchemy import delete, func, select
 from applicant_validator.clients.lever import LeverClient
 from applicant_validator.config import get_settings
 from applicant_validator.database import Applicant, ApplicantSource, get_session
+from applicant_validator.services.integration_settings import get_integration_settings_service
 from applicant_validator.services.validation import ensure_flag_types, validate_applicant
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -81,10 +82,41 @@ async def _perform_sync(days: int) -> None:
         _sync_state.message = "Connecting to Lever API..."
         _sync_state.error = None
 
-        settings = get_settings()
+        # Get Lever credentials - try database first, then fall back to environment
+        api_key = None
+        environment = "sandbox"
+
+        async with get_session() as session:
+            service = await get_integration_settings_service(session)
+            lever_integration = await service.get_integration("lever")
+
+            if lever_integration and lever_integration.api_key and lever_integration.is_enabled:
+                api_key = lever_integration.api_key
+                # Check config_json for environment setting
+                if lever_integration.config_json:
+                    import json
+
+                    try:
+                        config = json.loads(lever_integration.config_json)
+                        environment = config.get("environment", "sandbox")
+                    except json.JSONDecodeError:
+                        pass
+
+        # Fall back to environment variable if database key not configured
+        if not api_key:
+            settings = get_settings()
+            api_key = settings.lever_api_key
+            environment = settings.lever_environment
+
+        if not api_key:
+            raise ValueError(
+                "Lever API key not configured. "
+                "Add it in Integration Settings or set LEVER_API_KEY environment variable."
+            )
+
         client = LeverClient(
-            api_key=settings.lever_api_key,
-            environment=settings.lever_environment,
+            api_key=api_key,
+            environment=environment,
         )
 
         # Calculate timestamp for date filter

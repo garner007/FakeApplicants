@@ -1,6 +1,5 @@
 """Tests for the validation service."""
 
-
 from applicant_validator.database import FlagCategory, FlagSeverity, RiskLevel
 from applicant_validator.services.validation import (
     ALL_RULES,

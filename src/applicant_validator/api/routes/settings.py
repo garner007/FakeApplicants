@@ -36,6 +36,7 @@ class IntegrationResponse(BaseModel):
     last_test_success: bool | None = None
     last_test_message: str | None = None
     notes: str | None = None
+    config_json: str | None = None
 
     class Config:
         """Pydantic config."""
@@ -58,6 +59,7 @@ class UpdateIntegrationRequest(BaseModel):
     account_id: str | None = Field(None, description="Account ID (empty string to clear)")
     fraud_score_threshold: int | None = Field(None, ge=0, le=100)
     notes: str | None = None
+    config_json: str | None = Field(None, description="JSON configuration (provider-specific)")
 
 
 class TestIntegrationResponse(BaseModel):
@@ -90,6 +92,7 @@ def _integration_to_response(integration: Any) -> IntegrationResponse:
         last_test_success=integration.last_test_success,
         last_test_message=integration.last_test_message,
         notes=integration.notes,
+        config_json=integration.config_json,
     )
 
 
@@ -155,6 +158,7 @@ async def update_integration(
             account_id=request.account_id,
             fraud_score_threshold=request.fraud_score_threshold,
             notes=request.notes,
+            config_json=request.config_json,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

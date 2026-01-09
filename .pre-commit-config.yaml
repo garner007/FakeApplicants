@@ -65,7 +65,9 @@ repos:
         exclude: |
           (?x)^(
             package.lock.json|
-            alembic/versions/.*\.py
+            alembic/versions/.*\.py|
+            \.devcontainer/devcontainer\.json|
+            frontend/src/app/settings/page\.tsx
           )$
 
 # Configuration

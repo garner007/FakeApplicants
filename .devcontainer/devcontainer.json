@@ -56,9 +56,5 @@
 
   "containerEnv": {
     "DATABASE_URL": "postgresql+asyncpg://applicant_validator:dev_password_change_me@localhost:5432/applicant_validator"
-  },
-
-  "mounts": [
-    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
-  ]
+  }
 }
