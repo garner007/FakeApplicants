@@ -3,7 +3,7 @@
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from applicant_validator.validators.base import (
     RuleResult,
@@ -33,8 +33,8 @@ class DisposableEmailRule(ValidationRule):
     category = "email"
     default_severity = RuleSeverity.HIGH
     version = "2.0.0"  # Updated for database support
-    checks_fields = ["email"]
-    trigger_examples = [
+    checks_fields: ClassVar[list[str]] = ["email"]
+    trigger_examples: ClassVar[list[str]] = [
         "user@mailinator.com",
         "test@guerrillamail.com",
         "temp@10minutemail.com",
@@ -136,7 +136,7 @@ class DisposableEmailRule(ValidationRule):
 
         return None
 
-    async def validate(self, data: dict[str, Any]) -> RuleResult:
+    async def validate(self, data: dict[str, Any]) -> RuleResult:  # noqa: PLR0911
         """Validate that the email is not from a disposable provider.
 
         Args:
@@ -146,10 +146,17 @@ class DisposableEmailRule(ValidationRule):
             RuleResult with pass/fail status and evidence.
         """
         email = data.get("email")
+        is_manually_added = data.get("is_manually_added", False)
 
         # Handle missing or empty email
         if not email:
             return RuleResult.create_skip(self.name, "No email provided")
+
+        # Skip validation for manually added applicants with placeholder emails
+        if is_manually_added and "(not provided" in str(email):
+            return RuleResult.create_skip(
+                self.name, "Manually added applicant - email not provided"
+            )
 
         email = str(email).strip()
         if not email:

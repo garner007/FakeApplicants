@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 
 class RuleSeverity(str, Enum):
@@ -87,8 +87,8 @@ class ValidationRule(ABC):
     default_severity: RuleSeverity = RuleSeverity.MEDIUM
     version: str = "1.0.0"
     # Additional metadata for documentation
-    checks_fields: list[str] = []  # Which applicant fields this rule examines
-    trigger_examples: list[str] = []  # Examples of what triggers this rule
+    checks_fields: ClassVar[list[str]] = []  # Which applicant fields this rule examines
+    trigger_examples: ClassVar[list[str]] = []  # Examples of what triggers this rule
     rationale: str = ""  # Why this check matters
 
     @abstractmethod

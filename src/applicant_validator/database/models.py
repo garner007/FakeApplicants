@@ -213,6 +213,10 @@ class Applicant(Base, TimestampMixin, SoftDeleteMixin):
     )
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Manually added applicant (from Lever "Added manually" source)
+    # These applicants may have missing email/phone which is expected
+    is_manually_added: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Relationships
     linkedin_profile: Mapped["LinkedInProfile | None"] = relationship(
         back_populates="applicant",

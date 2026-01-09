@@ -127,17 +127,16 @@ class ValidationDataService:
 
             # Parse domains
             domains: list[str] = []
-            for line in response.text.splitlines():
-                line = line.strip()
+            for raw_line in response.text.splitlines():
+                stripped = raw_line.strip()
                 # Skip empty lines and comments
-                if line and not line.startswith("#"):
-                    domains.append(line.lower())
+                if stripped and not stripped.startswith("#"):
+                    domains.append(stripped.lower())
 
             logger.info(f"Fetched {len(domains)} domains from {source_name}")
 
             # Upsert domains in batches
             added = 0
-            updated = 0
             batch_size = 1000
 
             async with get_session() as session:
@@ -166,18 +165,18 @@ class ValidationDataService:
                         },
                     )
 
-                    result = await session.execute(stmt)
+                    await session.execute(stmt)
                     # Note: PostgreSQL doesn't easily distinguish inserts vs updates
                     # in ON CONFLICT, so we'll just track total
                     added += len(batch)
 
                 # Update sync record
-                sync_record = await session.get(ValidationDataSync, sync_id)
-                if sync_record:
-                    sync_record.status = "completed"
-                    sync_record.completed_at = datetime.now(UTC)
-                    sync_record.records_added = added
-                    sync_record.records_total = len(domains)
+                sync_record_completed = await session.get(ValidationDataSync, sync_id)
+                if sync_record_completed:
+                    sync_record_completed.status = "completed"
+                    sync_record_completed.completed_at = datetime.now(UTC)
+                    sync_record_completed.records_added = added
+                    sync_record_completed.records_total = len(domains)
 
             logger.info(f"Sync completed: {len(domains)} domains processed")
 
@@ -191,11 +190,11 @@ class ValidationDataService:
         except Exception as e:
             logger.error(f"Sync failed: {e}")
             async with get_session() as session:
-                sync_record = await session.get(ValidationDataSync, sync_id)
-                if sync_record:
-                    sync_record.status = "failed"
-                    sync_record.completed_at = datetime.now(UTC)
-                    sync_record.error_message = str(e)
+                sync_record_failed = await session.get(ValidationDataSync, sync_id)
+                if sync_record_failed:
+                    sync_record_failed.status = "failed"
+                    sync_record_failed.completed_at = datetime.now(UTC)
+                    sync_record_failed.error_message = str(e)
 
             raise
 
@@ -219,7 +218,7 @@ class ValidationDataService:
                 )
                 stmt = stmt.on_conflict_do_nothing(index_elements=["name"])
                 result = await session.execute(stmt)
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     added += 1
 
         logger.info(f"Seeded {added} VoIP carriers")
@@ -245,7 +244,7 @@ class ValidationDataService:
                 )
                 stmt = stmt.on_conflict_do_nothing(index_elements=["area_code"])
                 result = await session.execute(stmt)
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     added += 1
 
         logger.info(f"Seeded {added} VoIP area codes")

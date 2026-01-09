@@ -4,6 +4,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from applicant_validator.api.routes.admin import router as admin_router
 from applicant_validator.api.routes.applicants import router as applicants_router
 from applicant_validator.api.routes.revalidate import router as revalidate_router
 from applicant_validator.api.routes.rules import router as rules_router
@@ -33,6 +34,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(admin_router, prefix="/api")
 app.include_router(applicants_router, prefix="/api")
 app.include_router(revalidate_router, prefix="/api")
 app.include_router(rules_router, prefix="/api")

@@ -196,7 +196,7 @@ class IntegrationSettingsService:
             }
 
         try:
-            from twilio.rest import Client
+            from twilio.rest import Client  # type: ignore[import-not-found]
 
             client = Client(integration.account_id, integration.api_secret)
 

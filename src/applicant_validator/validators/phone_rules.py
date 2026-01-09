@@ -92,7 +92,7 @@ class VoIPPhoneRule(ValidationRule):
                 get_integration_settings_service,
             )
 
-            async for session in get_session():
+            async with get_session() as session:
                 service = await get_integration_settings_service(session)
                 self._ipqs_enabled = await service.is_enabled("ipqualityscore")
 
@@ -165,12 +165,12 @@ class VoIPPhoneRule(ValidationRule):
                 get_integration_settings_service,
             )
 
-            async for session in get_session():
+            async with get_session() as session:
                 service = await get_integration_settings_service(session)
                 credentials = await service.get_credentials("twilio")
 
                 if credentials and credentials.get("account_id") and credentials.get("api_secret"):
-                    from twilio.rest import Client
+                    from twilio.rest import Client  # type: ignore[import-not-found]
 
                     self._twilio_client = Client(
                         credentials["account_id"],
@@ -349,7 +349,7 @@ class VoIPPhoneRule(ValidationRule):
         Returns:
             The area code if it's a VoIP code, None otherwise.
         """
-        # Only check US/Canada numbers
+        # Only check +1 numbers (US area codes for VoIP detection)
         if phone_number.country_code != 1:
             return None
 
@@ -409,9 +409,15 @@ class VoIPPhoneRule(ValidationRule):
             RuleResult with pass/fail status and evidence.
         """
         phone = data.get("phone")
+        is_manually_added = data.get("is_manually_added", False)
 
         # Handle missing or empty phone
         if not phone:
+            # Skip with specific message for manually added applicants
+            if is_manually_added:
+                return RuleResult.create_skip(
+                    self.name, "Manually added applicant - phone not provided"
+                )
             return RuleResult.create_skip(self.name, "No phone number provided")
 
         phone = str(phone).strip()
@@ -618,4 +624,225 @@ class VoIPPhoneRule(ValidationRule):
         return RuleResult.create_pass(
             self.name,
             f"Phone number {e164_number} does not appear to be VoIP",
+        )
+
+
+class NonUSPhoneRule(ValidationRule):
+    """Validates that phone number is from a US number.
+
+    This rule flags phone numbers that are not from the US (+1 country code
+    with US area codes). Canadian and other international numbers are flagged.
+    """
+
+    name = "non_us_phone"
+    description = "Check if phone number is from outside the US"
+    category = "phone"
+    default_severity = RuleSeverity.HIGH
+    version = "1.1.0"  # Updated to US-only
+    checks_fields: ClassVar[list[str]] = ["phone"]
+    trigger_examples: ClassVar[list[str]] = [
+        "Canadian numbers (+1 416, +1 604, etc.)",
+        "UK numbers (+44)",
+        "India numbers (+91)",
+        "Nigeria numbers (+234)",
+        "Philippines numbers (+63)",
+    ]
+    rationale = (
+        "Phone numbers from outside the US may indicate an applicant is not currently "
+        "located in the US. This is relevant for roles requiring US presence and work "
+        "authorization, or for identifying potential overseas fraud operations."
+    )
+
+    # US and Canada share country code +1
+    US_COUNTRY_CODE = 1
+
+    # Canadian area codes (to distinguish from US)
+    # Source: https://en.wikipedia.org/wiki/List_of_North_American_Numbering_Plan_area_codes
+    CANADIAN_AREA_CODES: ClassVar[set[str]] = {
+        # Alberta
+        "403",
+        "587",
+        "780",
+        "825",
+        # British Columbia
+        "236",
+        "250",
+        "604",
+        "672",
+        "778",
+        # Manitoba
+        "204",
+        "431",
+        # New Brunswick
+        "506",
+        # Newfoundland and Labrador
+        "709",
+        # Northwest Territories / Nunavut / Yukon (shared)
+        "867",
+        # Nova Scotia / Prince Edward Island (shared)
+        "782",
+        "902",
+        # Ontario
+        "226",
+        "249",
+        "289",
+        "343",
+        "365",
+        "382",
+        "416",
+        "437",
+        "519",
+        "548",
+        "613",
+        "647",
+        "683",
+        "705",
+        "742",
+        "753",
+        "807",
+        "905",
+        # Quebec
+        "354",
+        "367",
+        "418",
+        "438",
+        "450",
+        "468",
+        "514",
+        "579",
+        "581",
+        "819",
+        "873",
+        # Saskatchewan
+        "306",
+        "639",
+    }
+
+    async def validate(self, data: dict[str, Any]) -> RuleResult:  # noqa: PLR0911, PLR0912
+        """Validate that the phone number is from the US.
+
+        Args:
+            data: Dictionary containing 'phone' key.
+
+        Returns:
+            RuleResult with pass/fail status and evidence.
+        """
+        phone = data.get("phone")
+        is_manually_added = data.get("is_manually_added", False)
+
+        # Handle missing or empty phone
+        if not phone:
+            if is_manually_added:
+                return RuleResult.create_skip(
+                    self.name, "Manually added applicant - phone not provided"
+                )
+            return RuleResult.create_skip(self.name, "No phone number provided")
+
+        phone = str(phone).strip()
+        if not phone:
+            return RuleResult.create_skip(self.name, "Empty phone number provided")
+
+        # Try to parse the phone number
+        try:
+            # Default to US if no country code provided
+            parsed_number = phonenumbers.parse(phone, "US")
+        except phonenumberutil.NumberParseException as e:
+            return RuleResult.create_skip(self.name, f"Could not parse phone number: {e}")
+
+        # Check if it's a valid number
+        if not phonenumbers.is_valid_number(parsed_number):
+            return RuleResult.create_skip(self.name, "Invalid phone number format")
+
+        country_code = parsed_number.country_code
+        e164_number = phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
+
+        # Get the region/country for the phone number
+        try:
+            region = phonenumbers.region_code_for_number(parsed_number)
+        except Exception:
+            region = "Unknown"
+
+        # Check if it's a +1 country code (need to distinguish US from Canada)
+        if country_code == self.US_COUNTRY_CODE:
+            # Extract area code to check if it's Canadian
+            national_number = str(parsed_number.national_number)
+            if len(national_number) >= 3:
+                area_code = national_number[:3]
+
+                if area_code in self.CANADIAN_AREA_CODES:
+                    # Canadian number - flag it
+                    evidence = [
+                        ValidationEvidence(
+                            evidence_type="area_code",
+                            key="area_code",
+                            value=area_code,
+                            description=f"Area code {area_code} is a Canadian area code",
+                        ),
+                        ValidationEvidence(
+                            evidence_type="region",
+                            key="region",
+                            value=region or "CA",
+                            description="Phone number is from Canada",
+                        ),
+                        ValidationEvidence(
+                            evidence_type="input_value",
+                            key="phone",
+                            value=e164_number,
+                            description="The phone number that was validated",
+                        ),
+                    ]
+                    return RuleResult.create_fail(
+                        rule_name=self.name,
+                        message=f"Phone number is from Canada (area code {area_code})",
+                        severity=self.default_severity,
+                        evidence=evidence,
+                    )
+
+            # US number - pass
+            return RuleResult.create_pass(
+                self.name,
+                f"Phone number {e164_number} is from the US ({region})",
+            )
+
+        # Non-US number (international) - flag it
+        # Try to get the country name
+        try:
+            from phonenumbers import geocoder
+
+            country_name = geocoder.country_name_for_number(parsed_number, "en")
+        except Exception:
+            country_name = f"Country code +{country_code}"
+
+        evidence = [
+            ValidationEvidence(
+                evidence_type="country_code",
+                key="country_code",
+                value=f"+{country_code}",
+                description=f"Phone number country code is +{country_code}",
+            ),
+            ValidationEvidence(
+                evidence_type="region",
+                key="region",
+                value=region or "Unknown",
+                description=f"Phone number region: {region}",
+            ),
+            ValidationEvidence(
+                evidence_type="country_name",
+                key="country",
+                value=country_name or "Unknown",
+                description=f"Country: {country_name}",
+            ),
+            ValidationEvidence(
+                evidence_type="input_value",
+                key="phone",
+                value=e164_number,
+                description="The phone number that was validated",
+            ),
+        ]
+
+        return RuleResult.create_fail(
+            rule_name=self.name,
+            message=f"Phone number is from outside the US ({country_name})",
+            severity=self.default_severity,
+            evidence=evidence,
         )

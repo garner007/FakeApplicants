@@ -251,7 +251,7 @@ async def _get_ipqs_client_from_db() -> IPQualityScoreClient | None:
             get_integration_settings_service,
         )
 
-        async for session in get_session():
+        async with get_session() as session:
             service = await get_integration_settings_service(session)
             credentials = await service.get_credentials("ipqualityscore")
 

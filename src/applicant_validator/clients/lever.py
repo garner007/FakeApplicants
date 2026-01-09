@@ -234,4 +234,4 @@ class LeverClient(BaseClient):
 
         response = await self._make_lever_request("GET", "/opportunities", params=params)
 
-        return cast(list[dict[str, Any]], response.get("data", []))
+        return cast("list[dict[str, Any]]", response.get("data", []))

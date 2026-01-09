@@ -166,7 +166,7 @@ class BaseClient(ABC):
                 # Raise for other error statuses
                 response.raise_for_status()
 
-                return cast(dict[str, Any], response.json())
+                return cast("dict[str, Any]", response.json())
 
             except httpx.HTTPStatusError as e:
                 last_exception = e

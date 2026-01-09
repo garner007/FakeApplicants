@@ -26,6 +26,10 @@ repos:
           - fastapi>=0.109.0
           - httpx>=0.26.0
           - structlog>=24.1.0
+          - sqlalchemy[asyncio]>=2.0.0
+          - phonenumbers>=8.13.0
+          - uvicorn>=0.27.0
+          - types-sqlalchemy-utils
         pass_filenames: false
         entry: mypy src
 
@@ -58,7 +62,11 @@ repos:
       - id: detect-secrets
         name: detect secrets
         args: [--baseline, .secrets.baseline]
-        exclude: package.lock.json
+        exclude: |
+          (?x)^(
+            package.lock.json|
+            alembic/versions/.*\.py
+          )$
 
 # Configuration
 default_language_version:

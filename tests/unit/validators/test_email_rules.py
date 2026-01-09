@@ -136,5 +136,6 @@ class TestDisposableEmailRule:
 
     async def test_loads_disposable_domains_from_file(self, rule: DisposableEmailRule) -> None:
         """Rule should load disposable domains from data file."""
-        # The rule should have loaded domains from disposable_domains.txt
-        assert len(rule._disposable_domains) > 100  # We have ~1000 domains
+        # Trigger lazy loading by calling the internal method
+        domains = await rule._load_disposable_domains()
+        assert len(domains) > 100  # We have ~1000 domains

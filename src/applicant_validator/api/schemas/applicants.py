@@ -36,6 +36,7 @@ class ApplicantResponse(BaseModel):
     validation_score: float | None = None
     flag_count: int = 0
     is_reviewed: bool = False
+    is_manually_added: bool = False
     reviewed_at: datetime | None = None
     reviewed_by: str | None = None
     created_at: datetime
@@ -60,6 +61,7 @@ class ApplicantListResponse(BaseModel):
     risk_level: str | None = None
     flag_count: int = 0
     is_reviewed: bool = False
+    is_manually_added: bool = False
     reviewed_at: datetime | None = None
     created_at: datetime
     lever_created_at: datetime | None = None

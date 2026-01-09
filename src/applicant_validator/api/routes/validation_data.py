@@ -106,7 +106,7 @@ class SyncStatusResponse(BaseModel):
     """Response with sync status info."""
 
     data_type: str
-    last_sync: dict | None
+    last_sync: dict[str, str | int | None] | None
     domain_count: int
 
 
@@ -295,8 +295,8 @@ async def seed_voip_area_codes() -> SeedResponse:
 # =============================================================================
 
 
-@router.post("/seed-all", response_model=dict)
-async def seed_all_validation_data() -> dict:
+@router.post("/seed-all", response_model=dict[str, str | dict[str, str | int | None]])
+async def seed_all_validation_data() -> dict[str, str | dict[str, str | int | None]]:
     """Seed all validation data with defaults.
 
     Populates VoIP carriers and area codes with default values.

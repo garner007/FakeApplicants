@@ -294,7 +294,7 @@ export default function VoIPPage() {
             <CardContent>
               <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Area codes are only checked for US/Canada phone numbers
+                  <strong>Note:</strong> Area codes are only checked for US phone numbers
                   (country code +1). These codes are often used by VoIP providers but may also
                   have legitimate uses.
                 </p>

@@ -74,8 +74,6 @@ class ApplicantCountResponse(BaseModel):
 
 async def _perform_sync(days: int) -> None:
     """Perform the actual sync operation."""
-    global _sync_state
-
     try:
         _sync_state.status = SyncStatus.RUNNING
         _sync_state.progress = 0
@@ -101,7 +99,7 @@ async def _perform_sync(days: int) -> None:
             while True:
                 _sync_state.message = f"Fetching page {page} from Lever..."
 
-                params: dict = {"limit": 100, "created_at_start": created_at_start}
+                params: dict[str, int | str] = {"limit": 100, "created_at_start": created_at_start}
                 if offset:
                     params["offset"] = offset
 
@@ -167,7 +165,18 @@ async def _perform_sync(days: int) -> None:
             for i, data in enumerate(all_applicants, 1):
                 # Extract data from Lever
                 emails = data.get("emails", [])
-                email = emails[0] if emails else f"unknown_{data['id']}@example.com"
+                sources = data.get("sources", [])
+
+                # Detect if this applicant was manually added
+                is_manually_added = "Added manually" in sources
+
+                # Handle missing email - use placeholder for manually added applicants
+                if emails:
+                    email = emails[0]
+                elif is_manually_added:
+                    email = "(not provided - manually added)"
+                else:
+                    email = "(not provided)"
 
                 phones = data.get("phones", [])
                 phone = phones[0].get("value") if phones else None
@@ -187,8 +196,6 @@ async def _perform_sync(days: int) -> None:
 
                 stage_changes = data.get("stageChanges", [])
                 stage = stage_changes[-1].get("toStageId") if stage_changes else None
-
-                sources = data.get("sources", [])
 
                 # Extract owner info - try owner first, then followers as fallback
                 lever_owner_id = data.get("owner")
@@ -222,6 +229,7 @@ async def _perform_sync(days: int) -> None:
                     existing.lever_created_at = lever_created_at
                     existing.lever_owner_id = lever_owner_id
                     existing.lever_owner_name = lever_owner_name
+                    existing.is_manually_added = is_manually_added
                     # Preserve: is_reviewed, reviewed_by, reviewed_at, risk_level, flag_count
 
                     # Update sources - delete old, add new
@@ -258,6 +266,7 @@ async def _perform_sync(days: int) -> None:
                         validation_score=None,
                         flag_count=0,
                         is_reviewed=False,
+                        is_manually_added=is_manually_added,
                     )
                     session.add(applicant)
                     await session.flush()
@@ -345,8 +354,6 @@ async def start_sync(
     background_tasks: BackgroundTasks,
 ) -> SyncResponse:
     """Start a sync operation from Lever."""
-    global _sync_state
-
     if _sync_state.status == SyncStatus.RUNNING:
         raise HTTPException(status_code=409, detail="Sync already in progress")
 

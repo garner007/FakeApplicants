@@ -20,6 +20,8 @@ from applicant_validator.database import (
 )
 from applicant_validator.validators import (
     DisposableEmailRule,
+    NonUSLocationRule,
+    NonUSPhoneRule,
     RuleSeverity,
     ValidationRule,
     VoIPPhoneRule,
@@ -47,6 +49,8 @@ RISK_LEVEL_MAP = {
 ALL_RULES: list[ValidationRule] = [
     DisposableEmailRule(),
     VoIPPhoneRule(),
+    NonUSPhoneRule(),
+    NonUSLocationRule(),
 ]
 
 
@@ -135,6 +139,7 @@ async def validate_applicant(
         "name": applicant.name,
         "location": applicant.location,
         "linkedin_url": applicant.linkedin_url,
+        "is_manually_added": getattr(applicant, "is_manually_added", False),
     }
 
     # Track results
@@ -209,11 +214,11 @@ async def validate_applicant(
                 validation_run.flags_raised += 1
 
             # Track highest severity
-            if result.severity:
-                if highest_severity is None or _severity_rank(result.severity) > _severity_rank(
-                    highest_severity
-                ):
-                    highest_severity = result.severity
+            if result.severity and (
+                highest_severity is None
+                or _severity_rank(result.severity) > _severity_rank(highest_severity)
+            ):
+                highest_severity = result.severity
 
     # Complete validation run
     validation_run.status = ValidationStatus.COMPLETED.value

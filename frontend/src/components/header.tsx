@@ -106,6 +106,7 @@ export function Header() {
   const isValidationDataActive = pathname.startsWith("/validation-data");
   const isDisposableDomainsActive = pathname === "/validation-data/disposable-domains";
   const isVoIPActive = pathname === "/validation-data/voip";
+  const isAdminActive = pathname === "/admin";
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -155,6 +156,9 @@ export function Header() {
                 VoIP Carriers
               </DropdownItem>
             </DropdownMenu>
+            <NavLink href="/admin" isActive={isAdminActive}>
+              Admin
+            </NavLink>
           </nav>
 
           {/* Mobile menu button */}
@@ -164,6 +168,7 @@ export function Header() {
             isSettingsActive={isSettingsActive}
             isDisposableDomainsActive={isDisposableDomainsActive}
             isVoIPActive={isVoIPActive}
+            isAdminActive={isAdminActive}
           />
         </div>
       </div>
@@ -177,6 +182,7 @@ interface MobileMenuProps {
   isSettingsActive: boolean;
   isDisposableDomainsActive: boolean;
   isVoIPActive: boolean;
+  isAdminActive: boolean;
 }
 
 function MobileMenu({
@@ -185,6 +191,7 @@ function MobileMenu({
   isSettingsActive,
   isDisposableDomainsActive,
   isVoIPActive,
+  isAdminActive,
 }: MobileMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -288,6 +295,19 @@ function MobileMenu({
                 onClick={() => setIsOpen(false)}
               >
                 VoIP Carriers
+              </Link>
+            </div>
+            <div className="border-t border-gray-200 pt-2 mt-2">
+              <Link
+                href="/admin"
+                className={`px-3 py-2 rounded-md text-sm font-medium block ${
+                  isAdminActive
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+                onClick={() => setIsOpen(false)}
+              >
+                Admin
               </Link>
             </div>
           </nav>

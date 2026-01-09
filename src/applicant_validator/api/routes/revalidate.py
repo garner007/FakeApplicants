@@ -91,8 +91,6 @@ async def _perform_revalidation(
     clear_existing_flags: bool = True,
 ) -> None:
     """Perform the actual re-validation operation."""
-    global _revalidate_state
-
     try:
         _revalidate_state.status = RevalidateStatus.RUNNING
         _revalidate_state.progress = 0
@@ -183,11 +181,14 @@ async def _perform_revalidation(
             await session.commit()
 
         _revalidate_state.status = RevalidateStatus.COMPLETED
+        processed = _revalidate_state.applicants_processed
+        raised = _revalidate_state.flags_raised
+        cleared = _revalidate_state.flags_cleared
+        risk_changes = _revalidate_state.risk_level_changes
         _revalidate_state.message = (
-            f"Re-validation complete: {_revalidate_state.applicants_processed} applicants processed, "
-            f"{_revalidate_state.flags_raised} flags raised, "
-            f"{_revalidate_state.flags_cleared} flags cleared, "
-            f"{_revalidate_state.risk_level_changes} risk level changes"
+            f"Re-validation complete: {processed} applicants processed, "
+            f"{raised} flags raised, {cleared} flags cleared, "
+            f"{risk_changes} risk level changes"
         )
         _revalidate_state.last_run_at = datetime.now(UTC)
         _revalidate_state.current_applicant_name = None
@@ -223,8 +224,6 @@ async def start_revalidation(
     background_tasks: BackgroundTasks,
 ) -> RevalidateResponse:
     """Start a re-validation operation on existing applicants."""
-    global _revalidate_state
-
     if _revalidate_state.status == RevalidateStatus.RUNNING:
         raise HTTPException(status_code=409, detail="Re-validation already in progress")
 

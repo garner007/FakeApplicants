@@ -21,29 +21,55 @@ class TestSettings:
 
     def test_settings_with_minimal_env_vars(self, minimal_env_vars: dict[str, str]) -> None:
         """Settings should work with only required environment variables."""
-        settings = Settings()
+        # Clear optional env vars that might be set externally
+        optional_keys = ["LEVER_ENVIRONMENT", "APP_ENV", "LOG_LEVEL"]
+        saved = {k: os.environ.pop(k, None) for k in optional_keys}
 
-        # Required fields should be set
-        assert settings.lever_api_key == "test_lever_api_key"
-        assert settings.linkedin_client_id == "test_client_id"
-        assert settings.linkedin_client_secret == "test_client_secret"
+        try:
+            # Use _env_file=None to avoid reading from .env file
+            settings = Settings(_env_file=None)
 
-        # Optional fields should have defaults
-        assert settings.lever_environment == "sandbox"
-        assert settings.app_env == "development"
-        assert settings.log_level == "INFO"
+            # Required fields should be set from minimal_env_vars fixture
+            assert settings.lever_api_key == "test_lever_api_key"
+            assert settings.linkedin_client_id == "test_client_id"
+            assert settings.linkedin_client_secret == "test_client_secret"
+
+            # Optional fields should have defaults
+            assert settings.lever_environment == "sandbox"
+            assert settings.app_env == "development"
+            assert settings.log_level == "INFO"
+        finally:
+            # Restore original values
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
 
     def test_settings_with_defaults(self) -> None:
         """Settings should work with default values for API keys."""
-        # Clear any existing env vars
-        for key in ["LEVER_API_KEY", "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"]:
-            os.environ.pop(key, None)
+        # Clear ALL env vars that Settings reads
+        env_keys = [
+            "LEVER_API_KEY",
+            "LINKEDIN_CLIENT_ID",
+            "LINKEDIN_CLIENT_SECRET",
+            "LEVER_ENVIRONMENT",
+            "APP_ENV",
+            "LOG_LEVEL",
+            "DATABASE_URL",
+        ]
+        saved = {k: os.environ.pop(k, None) for k in env_keys}
 
-        # Should not raise - API keys are optional for development
-        settings = Settings()
-        assert settings.lever_api_key == ""
-        assert settings.linkedin_client_id == ""
-        assert settings.linkedin_client_secret == ""
+        try:
+            # Should not raise - API keys are optional for development
+            # Use _env_file=None to avoid reading from .env file
+            settings = Settings(_env_file=None)
+            assert settings.lever_api_key == ""
+            assert settings.linkedin_client_id == ""
+            assert settings.linkedin_client_secret == ""
+        finally:
+            # Restore original values
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
 
     def test_lever_base_url_sandbox(self, mock_env_vars: dict[str, str]) -> None:
         """lever_base_url should return sandbox URL when environment is sandbox."""
