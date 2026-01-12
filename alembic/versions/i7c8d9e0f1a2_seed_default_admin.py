@@ -7,7 +7,7 @@ Create Date: 2026-01-10
 This migration:
 1. Adds must_change_email column to users table
 2. Seeds a default superadmin user with credentials:
-   - Email: admin@localhost
+   - Email: admin@example.com
    - Password: changeme123!
 
 IMPORTANT: Both email AND password must be changed on first login.
@@ -26,7 +26,7 @@ branch_labels: str | None = None
 depends_on: str | None = None
 
 # Default admin credentials - MUST BE CHANGED ON FIRST LOGIN
-DEFAULT_ADMIN_EMAIL = "admin@localhost"
+DEFAULT_ADMIN_EMAIL = "admin@example.com"
 DEFAULT_ADMIN_PASSWORD = "changeme123!"
 DEFAULT_ADMIN_NAME = "Administrator"
 

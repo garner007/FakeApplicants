@@ -18,7 +18,7 @@ from applicant_validator.api.routes.sync import router as sync_router
 from applicant_validator.api.routes.users import router as users_router
 from applicant_validator.api.routes.validation_data import router as validation_data_router
 from applicant_validator.config import get_settings
-from applicant_validator.database import get_db_session
+from applicant_validator.database import get_session
 from applicant_validator.services.auth_settings import (
     ensure_auth_settings,
     get_auth_settings_cache,
@@ -29,11 +29,11 @@ settings = get_settings()
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler - runs on startup/shutdown."""
     # Startup: Load auth settings from database
     logger.info("Loading auth settings from database...")
-    async with get_db_session() as session:
+    async with get_session() as session:
         # Ensure default settings exist and load cache
         await ensure_auth_settings(session)
         await session.commit()

@@ -46,9 +46,12 @@ class Settings(BaseSettings):
         description="LinkedIn environment: development or production",
     )
 
-    # Database Configuration
+    # Database Configuration (default matches docker-compose.yml for local dev)
     database_url: str = Field(
-        default="postgresql+asyncpg://user:password@localhost:5432/applicant_validator",  # pragma: allowlist secret
+        default=(
+            "postgresql+asyncpg://applicant_validator:"
+            "dev_password_change_me@localhost:5432/applicant_validator"  # pragma: allowlist secret
+        ),
         description="PostgreSQL connection URL",
     )
     database_pool_size: int = Field(default=5, description="Database connection pool size")

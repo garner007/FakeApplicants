@@ -4,6 +4,7 @@ import re
 import time
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -81,8 +82,8 @@ def is_linkedin_profile_url(url: str | None) -> bool:
         return False
 
 
-from applicant_validator.config import get_settings
-from applicant_validator.database import (
+from applicant_validator.config import get_settings  # noqa: E402
+from applicant_validator.database import (  # noqa: E402
     Applicant,
     ApplicantPosting,
     ApplicantSource,
@@ -93,8 +94,13 @@ from applicant_validator.database import (
     LeverPosting,
     get_session,
 )
-from applicant_validator.services.integration_settings import get_integration_settings_service
-from applicant_validator.services.validation import ensure_flag_types, validate_applicant
+from applicant_validator.services.integration_settings import (  # noqa: E402
+    get_integration_settings_service,
+)
+from applicant_validator.services.validation import (  # noqa: E402
+    ensure_flag_types,
+    validate_applicant,
+)
 
 # Default threshold for mass applicant detection
 DEFAULT_MASS_APPLICANT_THRESHOLD = 5
@@ -438,7 +444,7 @@ async def _perform_sync(days: int) -> None:
 
         if all_opportunity_ids:
             # Fetch all postings from Lever
-            all_postings: dict[str, dict] = {}  # posting_id -> posting_data
+            all_postings: dict[str, dict[str, Any]] = {}  # posting_id -> posting_data
             opp_to_posting: dict[str, str] = {}  # opportunity_id -> posting_id
 
             async with client:
@@ -496,7 +502,7 @@ async def _perform_sync(days: int) -> None:
                     if posting_id not in existing_posting_ids:
                         # Parse posting created_at
                         created_at_ms = posting_data.get("createdAt", 0)
-                        lever_created_at = (
+                        posting_created_at: datetime | None = (
                             datetime.fromtimestamp(created_at_ms / 1000, tz=UTC)
                             if created_at_ms
                             else None
@@ -510,7 +516,7 @@ async def _perform_sync(days: int) -> None:
                             location=posting_data.get("categories", {}).get("location"),
                             commitment=posting_data.get("categories", {}).get("commitment"),
                             state=posting_data.get("state"),
-                            lever_created_at=lever_created_at,
+                            lever_created_at=posting_created_at,
                         )
                         session.add(db_posting)
                         posting_db_map[posting_id] = db_posting
@@ -518,9 +524,9 @@ async def _perform_sync(days: int) -> None:
                 await session.flush()
 
                 # Fetch all posting records (including existing ones)
-                result = await session.execute(select(LeverPosting))
-                for db_posting in result.scalars().all():
-                    posting_db_map[db_posting.lever_posting_id] = db_posting
+                all_postings_result = await session.execute(select(LeverPosting))
+                for posting_record in all_postings_result.scalars().all():
+                    posting_db_map[posting_record.lever_posting_id] = posting_record
 
                 # Get existing applicant-posting links
                 _sync_state.message = "Linking applicants to postings..."
@@ -550,8 +556,8 @@ async def _perform_sync(days: int) -> None:
 
                 # Create applicant-posting links
                 for lever_id, opp_ids in applicant_opportunity_map.items():
-                    applicant = applicant_db_map.get(lever_id)
-                    if not applicant:
+                    link_applicant = applicant_db_map.get(lever_id)
+                    if not link_applicant:
                         continue
 
                     for opp_id in opp_ids:
@@ -559,19 +565,19 @@ async def _perform_sync(days: int) -> None:
                         if not posting_id:
                             continue
 
-                        db_posting = posting_db_map.get(posting_id)
-                        if not db_posting:
+                        link_posting = posting_db_map.get(posting_id)
+                        if not link_posting:
                             continue
 
                         # Check if link already exists
-                        link_key = (str(applicant.id), str(db_posting.id))
+                        link_key = (str(link_applicant.id), str(link_posting.id))
                         if link_key in existing_links:
                             continue
 
                         # Create the link
                         applicant_posting = ApplicantPosting(
-                            applicant_id=applicant.id,
-                            posting_id=db_posting.id,
+                            applicant_id=link_applicant.id,
+                            posting_id=link_posting.id,
                             lever_opportunity_id=opp_id,
                         )
                         session.add(applicant_posting)

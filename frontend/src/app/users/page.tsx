@@ -38,7 +38,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 interface User {
   id: string;
   email: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   role: string;
   is_active: boolean;
   must_change_password: boolean;
@@ -46,10 +47,15 @@ interface User {
   created_at: string;
 }
 
+function getDisplayName(user: User): string {
+  return `${user.first_name} ${user.last_name}`.trim() || user.email;
+}
+
 interface CreateUserResponse {
   id: string;
   email: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   role: string;
   temp_password: string;
 }
@@ -85,7 +91,8 @@ export default function UsersPage() {
   // Create user form state
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserName, setNewUserName] = useState("");
+  const [newUserFirstName, setNewUserFirstName] = useState("");
+  const [newUserLastName, setNewUserLastName] = useState("");
   const [newUserRole, setNewUserRole] = useState("user");
   const [creating, setCreating] = useState(false);
   const [createdUser, setCreatedUser] = useState<CreateUserResponse | null>(null);
@@ -96,6 +103,13 @@ export default function UsersPage() {
 
   // Deactivate dialog
   const [deactivateUser, setDeactivateUser] = useState<User | null>(null);
+
+  // Edit user dialog
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editRole, setEditRole] = useState("");
+  const [updating, setUpdating] = useState(false);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -137,7 +151,8 @@ export default function UsersPage() {
         credentials: "include",
         body: JSON.stringify({
           email: newUserEmail,
-          name: newUserName,
+          first_name: newUserFirstName,
+          last_name: newUserLastName,
           role: newUserRole,
         }),
       });
@@ -147,7 +162,8 @@ export default function UsersPage() {
         setCreatedUser(data);
         setShowCreateForm(false);
         setNewUserEmail("");
-        setNewUserName("");
+        setNewUserFirstName("");
+        setNewUserLastName("");
         setNewUserRole("user");
         loadUsers();
       } else {
@@ -204,6 +220,46 @@ export default function UsersPage() {
       }
     } catch (err) {
       setError("Failed to deactivate user");
+    }
+  };
+
+  const openEditDialog = (user: User) => {
+    setEditUser(user);
+    setEditFirstName(user.first_name);
+    setEditLastName(user.last_name);
+    setEditRole(user.role);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editUser) return;
+    setUpdating(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/users/${editUser.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          first_name: editFirstName,
+          last_name: editLastName,
+          role: editRole,
+        }),
+      });
+
+      if (response.ok) {
+        setEditUser(null);
+        loadUsers();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || "Failed to update user");
+      }
+    } catch (err) {
+      setError("Failed to update user");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -285,9 +341,9 @@ export default function UsersPage() {
           <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border">
             <h2 className="text-lg font-semibold mb-4">Create New User</h2>
             <form onSubmit={handleCreateUser} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="newEmail">Email</Label>
+                  <Label htmlFor="newEmail">Email *</Label>
                   <Input
                     id="newEmail"
                     type="email"
@@ -298,14 +354,25 @@ export default function UsersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="newName">Name</Label>
+                  <Label htmlFor="newFirstName">First Name *</Label>
                   <Input
-                    id="newName"
+                    id="newFirstName"
                     type="text"
-                    value={newUserName}
-                    onChange={(e) => setNewUserName(e.target.value)}
+                    value={newUserFirstName}
+                    onChange={(e) => setNewUserFirstName(e.target.value)}
                     required
-                    placeholder="Full Name"
+                    placeholder="First Name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newLastName">Last Name *</Label>
+                  <Input
+                    id="newLastName"
+                    type="text"
+                    value={newUserLastName}
+                    onChange={(e) => setNewUserLastName(e.target.value)}
+                    required
+                    placeholder="Last Name"
                   />
                 </div>
                 <div className="space-y-2">
@@ -360,7 +427,7 @@ export default function UsersPage() {
             <TableBody>
               {users.map((user) => (
                 <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.name}</TableCell>
+                  <TableCell className="font-medium">{getDisplayName(user)}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
                     <Badge className={getRoleBadgeColor(user.role)}>
@@ -389,10 +456,18 @@ export default function UsersPage() {
                       : "Never"}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-2">
                       <Button
-                        variant="ghost"
                         size="sm"
+                        className="bg-blue-500 hover:bg-blue-600 text-white"
+                        onClick={() => openEditDialog(user)}
+                        disabled={user.role === "superadmin" && !isSuperAdmin}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-amber-500 hover:bg-amber-600 text-white"
                         onClick={() => setResetPasswordUser(user)}
                         disabled={user.role === "superadmin" && !isSuperAdmin}
                       >
@@ -400,8 +475,8 @@ export default function UsersPage() {
                       </Button>
                       {user.is_active ? (
                         <Button
-                          variant="ghost"
                           size="sm"
+                          className="bg-red-500 hover:bg-red-600 text-white"
                           onClick={() => setDeactivateUser(user)}
                           disabled={user.role === "superadmin" && !isSuperAdmin}
                         >
@@ -409,8 +484,8 @@ export default function UsersPage() {
                         </Button>
                       ) : (
                         <Button
-                          variant="ghost"
                           size="sm"
+                          className="bg-green-500 hover:bg-green-600 text-white"
                           onClick={() => handleToggleActive(user)}
                         >
                           Reactivate
@@ -434,7 +509,7 @@ export default function UsersPage() {
               <AlertDialogTitle>User Created Successfully</AlertDialogTitle>
               <AlertDialogDescription className="space-y-2">
                 <p>
-                  <strong>{createdUser?.name}</strong> ({createdUser?.email}) has
+                  <strong>{createdUser?.first_name} {createdUser?.last_name}</strong> ({createdUser?.email}) has
                   been created.
                 </p>
                 <p>Temporary password:</p>
@@ -465,7 +540,7 @@ export default function UsersPage() {
               <AlertDialogTitle>Reset Password</AlertDialogTitle>
               <AlertDialogDescription>
                 Are you sure you want to reset the password for{" "}
-                <strong>{resetPasswordUser?.name}</strong>? They will receive a
+                <strong>{resetPasswordUser && getDisplayName(resetPasswordUser)}</strong>? They will receive a
                 new temporary password.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -493,7 +568,7 @@ export default function UsersPage() {
               <AlertDialogTitle>Password Reset</AlertDialogTitle>
               <AlertDialogDescription className="space-y-2">
                 <p>
-                  Password for <strong>{resetPasswordUser?.name}</strong> has been
+                  Password for <strong>{resetPasswordUser && getDisplayName(resetPasswordUser)}</strong> has been
                   reset.
                 </p>
                 <p>New temporary password:</p>
@@ -529,7 +604,7 @@ export default function UsersPage() {
               <AlertDialogTitle>Deactivate User</AlertDialogTitle>
               <AlertDialogDescription>
                 Are you sure you want to deactivate{" "}
-                <strong>{deactivateUser?.name}</strong>? They will no longer be
+                <strong>{deactivateUser && getDisplayName(deactivateUser)}</strong>? They will no longer be
                 able to log in.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -542,6 +617,70 @@ export default function UsersPage() {
                 className="bg-red-600 hover:bg-red-700"
               >
                 Deactivate
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Edit User Dialog */}
+        <AlertDialog
+          open={!!editUser}
+          onOpenChange={() => setEditUser(null)}
+        >
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Edit User</AlertDialogTitle>
+              <AlertDialogDescription>
+                Update details for <strong>{editUser?.email}</strong>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="editFirstName">First Name</Label>
+                  <Input
+                    id="editFirstName"
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    placeholder="First Name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editLastName">Last Name</Label>
+                  <Input
+                    id="editLastName"
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    placeholder="Last Name"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editRole">Role</Label>
+                <Select value={editRole} onValueChange={setEditRole}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((role) => (
+                      <SelectItem
+                        key={role.value}
+                        value={role.value}
+                        disabled={role.value === "superadmin" && !isSuperAdmin}
+                      >
+                        {role.label} - {role.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setEditUser(null)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleUpdateUser} disabled={updating}>
+                {updating ? "Saving..." : "Save Changes"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from applicant_validator.database import User, get_session
+from applicant_validator.database import User, get_db_session
 from applicant_validator.services.auth import (
     decode_jwt_token,
     get_user_by_id,
@@ -16,7 +16,7 @@ from applicant_validator.services.auth_settings import get_auth_settings_cache
 
 async def get_current_user_optional(
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> User | None:
     """Get the current user from the session cookie if authenticated.
 
@@ -52,18 +52,17 @@ async def get_current_user_optional(
     if not user_session:
         return None
 
-    # Get user
+    # Get user and validate
     try:
         from uuid import UUID
 
         user = await get_user_by_id(session, UUID(user_id))
+        if user and user.is_active:
+            return user
     except (ValueError, TypeError):
-        return None
+        pass
 
-    if not user or not user.is_active:
-        return None
-
-    return user
+    return None
 
 
 async def get_current_user(

@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from applicant_validator.api.dependencies import CurrentUser
-from applicant_validator.database import get_session
+from applicant_validator.database import get_db_session
 from applicant_validator.services.auth import (
     authenticate_user,
     change_password,
@@ -113,7 +113,7 @@ async def login(
     request: Request,
     response: Response,
     body: LoginRequest,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> LoginResponse:
     """Login with email and password.
 
@@ -155,8 +155,8 @@ async def login(
 async def logout(
     request: Request,
     response: Response,
-    session: Annotated[AsyncSession, Depends(get_session)],
-    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _current_user: CurrentUser,
 ) -> MessageResponse:
     """Logout and revoke the current session."""
     cache = get_auth_settings_cache()
@@ -201,7 +201,7 @@ async def get_current_user_info(
 @router.post("/change-password", response_model=MessageResponse)
 async def change_user_password(
     body: ChangePasswordRequest,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: CurrentUser,
 ) -> MessageResponse:
     """Change the current user's password.
@@ -232,7 +232,7 @@ async def change_user_password(
 @router.post("/initial-setup", response_model=MessageResponse)
 async def initial_setup(
     body: InitialSetupRequest,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: CurrentUser,
 ) -> MessageResponse:
     """Complete initial account setup (change email and password on first login).

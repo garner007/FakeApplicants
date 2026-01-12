@@ -391,6 +391,9 @@ async def validate_single_applicant(applicant_id: UUID) -> ValidateApplicantResp
         result = await session.execute(query)
         applicant = result.scalar_one_or_none()
 
+        # Should not be None since we validated applicant_id exists earlier
+        assert applicant is not None, "Applicant should exist after validation"
+
         # Build response message
         if validation_run.flags_raised == 0:
             message = "Validation complete. No issues found."

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from applicant_validator.api.dependencies import AdminUser
-from applicant_validator.database import User, UserRole, get_session
+from applicant_validator.database import User, UserRole, get_db_session
 from applicant_validator.services.auth import (
     create_user,
     generate_temp_password,
@@ -27,7 +27,8 @@ class UserListResponse(BaseModel):
 
     id: str
     email: str
-    name: str
+    first_name: str
+    last_name: str
     role: str
     is_active: bool
     must_change_password: bool
@@ -45,7 +46,8 @@ class CreateUserRequest(BaseModel):
     """Create user request body."""
 
     email: EmailStr
-    name: str = Field(..., min_length=1, max_length=255)
+    first_name: str = Field(..., min_length=1, max_length=255)
+    last_name: str = Field(..., min_length=1, max_length=255)
     role: str = Field(default="user")
 
 
@@ -54,7 +56,8 @@ class CreateUserResponse(BaseModel):
 
     id: str
     email: str
-    name: str
+    first_name: str
+    last_name: str
     role: str
     temp_password: str
 
@@ -62,7 +65,8 @@ class CreateUserResponse(BaseModel):
 class UpdateUserRequest(BaseModel):
     """Update user request body."""
 
-    name: str | None = Field(default=None, max_length=255)
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
     role: str | None = None
     is_active: bool | None = None
 
@@ -117,8 +121,8 @@ def _validate_role(role: str, current_user: User, target_user: User | None = Non
 
 @router.get("", response_model=list[UserListResponse])
 async def list_users(
-    session: Annotated[AsyncSession, Depends(get_session)],
-    current_user: AdminUser,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _current_user: AdminUser,
 ) -> list[UserListResponse]:
     """List all users (admin only)."""
     result = await session.execute(
@@ -132,7 +136,8 @@ async def list_users(
         UserListResponse(
             id=str(user.id),
             email=user.email,
-            name=user.name,
+            first_name=user.first_name or "",
+            last_name=user.last_name or "",
             role=user.role,
             is_active=user.is_active,
             must_change_password=user.must_change_password,
@@ -146,8 +151,8 @@ async def list_users(
 @router.get("/{user_id}", response_model=UserDetailResponse)
 async def get_user(
     user_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
-    current_user: AdminUser,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _current_user: AdminUser,
 ) -> UserDetailResponse:
     """Get a specific user by ID (admin only)."""
     user = await get_user_by_id(session, user_id)
@@ -168,7 +173,8 @@ async def get_user(
     return UserDetailResponse(
         id=str(user.id),
         email=user.email,
-        name=user.name,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
         role=user.role,
         is_active=user.is_active,
         must_change_password=user.must_change_password,
@@ -181,7 +187,7 @@ async def get_user(
 @router.post("", response_model=CreateUserResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_user(
     body: CreateUserRequest,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: AdminUser,
 ) -> CreateUserResponse:
     """Create a new user (admin only).
@@ -194,15 +200,20 @@ async def create_new_user(
     # Generate temp password
     temp_password = generate_temp_password()
 
+    # Compute display name from first + last name
+    display_name = f"{body.first_name} {body.last_name}".strip()
+
     try:
         user = await create_user(
             session,
             email=body.email,
             password=temp_password,
-            name=body.name,
+            name=display_name,
             role=UserRole(body.role),
             created_by=current_user,
             must_change_password=True,
+            first_name=body.first_name,
+            last_name=body.last_name,
         )
         await session.commit()
     except ValueError as e:
@@ -214,7 +225,8 @@ async def create_new_user(
     return CreateUserResponse(
         id=str(user.id),
         email=user.email,
-        name=user.name,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
         role=user.role,
         temp_password=temp_password,
     )
@@ -224,7 +236,7 @@ async def create_new_user(
 async def update_user(
     user_id: UUID,
     body: UpdateUserRequest,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: AdminUser,
 ) -> UserDetailResponse:
     """Update a user (admin only).
@@ -258,9 +270,21 @@ async def update_user(
         _validate_role(body.role, current_user, user)
         user.role = body.role
 
-    # Update fields
-    if body.name is not None:
-        user.name = body.name
+    # Update name fields
+    name_changed = False
+    if body.first_name is not None:
+        user.first_name = body.first_name
+        name_changed = True
+
+    if body.last_name is not None:
+        user.last_name = body.last_name
+        name_changed = True
+
+    # Update computed display name if either name part changed
+    if name_changed:
+        first = user.first_name or ""
+        last = user.last_name or ""
+        user.name = f"{first} {last}".strip()
 
     if body.is_active is not None:
         user.is_active = body.is_active
@@ -280,7 +304,8 @@ async def update_user(
     return UserDetailResponse(
         id=str(user.id),
         email=user.email,
-        name=user.name,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
         role=user.role,
         is_active=user.is_active,
         must_change_password=user.must_change_password,
@@ -293,7 +318,7 @@ async def update_user(
 @router.delete("/{user_id}", response_model=MessageResponse)
 async def deactivate_user(
     user_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: AdminUser,
 ) -> MessageResponse:
     """Deactivate a user (soft delete, admin only).
@@ -336,7 +361,7 @@ async def deactivate_user(
 @router.post("/{user_id}/reset-password", response_model=ResetPasswordResponse)
 async def reset_password(
     user_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: AdminUser,
 ) -> ResetPasswordResponse:
     """Reset a user's password to a temporary one (admin only).

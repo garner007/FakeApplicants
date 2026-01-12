@@ -9,8 +9,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+from jose import JWTError, jwt  # type: ignore[import-untyped]
+from passlib.context import CryptContext  # type: ignore[import-untyped]
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,8 @@ def hash_password(password: str) -> str:
     Returns:
         Hashed password string.
     """
-    return pwd_context.hash(password)
+    result: str = pwd_context.hash(password)
+    return result
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -46,7 +47,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    result: bool = pwd_context.verify(plain_password, hashed_password)
+    return result
 
 
 def validate_email_domain(email: str) -> bool:
@@ -109,7 +111,8 @@ def create_jwt_token(user_id: str, jti: str) -> str:
         "iat": datetime.now(UTC),
     }
 
-    return jwt.encode(payload, cache.jwt_secret, algorithm=ALGORITHM)
+    result: str = jwt.encode(payload, cache.jwt_secret, algorithm=ALGORITHM)
+    return result
 
 
 def decode_jwt_token(token: str) -> dict[str, Any] | None:
@@ -124,7 +127,7 @@ def decode_jwt_token(token: str) -> dict[str, Any] | None:
     cache = get_auth_settings_cache()
 
     try:
-        payload = jwt.decode(token, cache.jwt_secret, algorithms=[ALGORITHM])
+        payload: dict[str, Any] = jwt.decode(token, cache.jwt_secret, algorithms=[ALGORITHM])
         return payload
     except JWTError:
         return None
@@ -324,6 +327,8 @@ async def create_user(
     role: UserRole = UserRole.USER,
     created_by: User | None = None,
     must_change_password: bool = True,
+    first_name: str | None = None,
+    last_name: str | None = None,
 ) -> User:
     """Create a new user.
 
@@ -335,6 +340,8 @@ async def create_user(
         role: User role (default USER).
         created_by: Admin user who created this user.
         must_change_password: Whether user must change password on first login.
+        first_name: Optional first name.
+        last_name: Optional last name.
 
     Returns:
         Created User instance.
@@ -357,6 +364,8 @@ async def create_user(
         email=email.lower(),
         password_hash=hash_password(password),
         name=name,
+        first_name=first_name,
+        last_name=last_name,
         role=role.value,
         created_by_id=created_by.id if created_by else None,
         must_change_password=must_change_password,
@@ -368,7 +377,7 @@ async def create_user(
 
 
 async def change_password(
-    session: AsyncSession,
+    _session: AsyncSession,
     user: User,
     new_password: str,
 ) -> None:
