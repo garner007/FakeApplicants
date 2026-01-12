@@ -1,8 +1,9 @@
 """Database module for applicant validator."""
 
-from applicant_validator.database.base import Base, get_session, init_db
+from applicant_validator.database.base import Base, get_db_session, get_session, init_db
 from applicant_validator.database.models import (
     Applicant,
+    ApplicantPosting,
     ApplicantSource,
     AuditAction,
     AuditLog,
@@ -12,12 +13,17 @@ from applicant_validator.database.models import (
     FlagEvidence,
     FlagSeverity,
     FlagType,
+    LeverPosting,
     LinkedInCertification,
     LinkedInEducation,
     LinkedInExperience,
     LinkedInProfile,
     LinkedInSkill,
     RiskLevel,
+    SystemConfig,
+    User,
+    UserRole,
+    UserSession,
     ValidationResult,
     ValidationResultEvidence,
     ValidationRun,
@@ -28,6 +34,7 @@ from applicant_validator.database.models import (
 __all__ = [
     # Core models
     "Applicant",
+    "ApplicantPosting",
     "ApplicantSource",
     # Enums
     "AuditAction",
@@ -40,17 +47,24 @@ __all__ = [
     "FlagEvidence",
     "FlagSeverity",
     "FlagType",
+    "LeverPosting",
     "LinkedInCertification",
     "LinkedInEducation",
     "LinkedInExperience",
     "LinkedInProfile",
     "LinkedInSkill",
     "RiskLevel",
+    "SystemConfig",
+    # Auth models
+    "User",
+    "UserRole",
+    "UserSession",
     "ValidationResult",
     "ValidationResultEvidence",
     "ValidationRun",
     "ValidationRunConfig",
     "ValidationStatus",
+    "get_db_session",
     "get_session",
     "init_db",
 ]

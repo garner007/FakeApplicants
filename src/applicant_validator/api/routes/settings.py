@@ -10,6 +10,7 @@ from applicant_validator.database.base import get_db_session
 from applicant_validator.services.integration_settings import (
     get_integration_settings_service,
 )
+from applicant_validator.services.system_config import get_system_config_service
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -68,6 +69,25 @@ class TestIntegrationResponse(BaseModel):
     success: bool
     message: str
     details: dict[str, Any] | None = None
+
+
+class ValidationSettingsResponse(BaseModel):
+    """Response model for validation settings."""
+
+    mass_applicant_threshold: int = Field(
+        description="Number of job applications that triggers mass applicant flag"
+    )
+
+
+class UpdateValidationSettingsRequest(BaseModel):
+    """Request model for updating validation settings."""
+
+    mass_applicant_threshold: int | None = Field(
+        None,
+        ge=2,
+        le=50,
+        description="Number of job applications that triggers mass applicant flag (2-50)",
+    )
 
 
 # =============================================================================
@@ -208,3 +228,51 @@ async def reset_usage(
     await service.reset_monthly_usage(provider)
 
     return {"status": "ok", "message": f"Usage reset for {provider}"}
+
+
+# =============================================================================
+# Validation Settings Routes
+# =============================================================================
+
+
+@router.get("/validation", response_model=ValidationSettingsResponse)
+async def get_validation_settings(
+    session: AsyncSession = Depends(get_db_session),
+) -> ValidationSettingsResponse:
+    """Get validation settings.
+
+    Returns all configurable validation thresholds and settings.
+    """
+    config_service = get_system_config_service(session)
+    settings = await config_service.get_all_validation_settings()
+
+    return ValidationSettingsResponse(
+        mass_applicant_threshold=settings.get("mass_applicant_threshold", 5),
+    )
+
+
+@router.patch("/validation", response_model=ValidationSettingsResponse)
+async def update_validation_settings(
+    request: UpdateValidationSettingsRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> ValidationSettingsResponse:
+    """Update validation settings.
+
+    Args:
+        request: Fields to update.
+
+    Returns:
+        Updated validation settings.
+    """
+    config_service = get_system_config_service(session)
+
+    # Update mass applicant threshold if provided
+    if request.mass_applicant_threshold is not None:
+        await config_service.set("mass_applicant_threshold", request.mass_applicant_threshold)
+
+    # Return updated settings
+    settings = await config_service.get_all_validation_settings()
+
+    return ValidationSettingsResponse(
+        mass_applicant_threshold=settings.get("mass_applicant_threshold", 5),
+    )

@@ -718,7 +718,7 @@ class NonUSPhoneRule(ValidationRule):
         "639",
     }
 
-    async def validate(self, data: dict[str, Any]) -> RuleResult:  # noqa: PLR0911, PLR0912
+    async def validate(self, data: dict[str, Any]) -> RuleResult:  # noqa: PLR0911
         """Validate that the phone number is from the US.
 
         Args:

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
 
     # Database Configuration
     database_url: str = Field(
-        default="postgresql+asyncpg://applicant_validator:dev_password_change_me@localhost:5432/applicant_validator",
+        default="postgresql+asyncpg://user:password@localhost:5432/applicant_validator",  # pragma: allowlist secret
         description="PostgreSQL connection URL",
     )
     database_pool_size: int = Field(default=5, description="Database connection pool size")
@@ -101,6 +101,22 @@ class Settings(BaseSettings):
         description="Fraud score threshold (0-100) above which to flag as suspicious",
     )
 
+    # Superadmin Seeding (used during initial database setup)
+    # Note: Auth settings (JWT expiry, allowed domain, cookie settings) are stored
+    # in the database and managed via the admin panel. The JWT secret is auto-generated.
+    admin_email: str = Field(
+        default="",
+        description="Initial superadmin email (required for first setup)",
+    )
+    admin_password: str = Field(
+        default="",
+        description="Initial superadmin password (change immediately after first login)",
+    )
+    admin_name: str = Field(
+        default="Admin",
+        description="Initial superadmin display name",
+    )
+
     @property
     def has_twilio_credentials(self) -> bool:
         """Check if Twilio credentials are configured."""
@@ -127,6 +143,11 @@ class Settings(BaseSettings):
     def is_debug(self) -> bool:
         """Check if debug mode is enabled (only in non-production)."""
         return self.debug_mode and not self.is_production
+
+    @property
+    def has_admin_seed_config(self) -> bool:
+        """Check if admin seeding configuration is provided."""
+        return bool(self.admin_email and self.admin_password)
 
 
 @lru_cache

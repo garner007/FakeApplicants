@@ -1,9 +1,8 @@
 # Makefile for Applicant Validator
 # Run `make help` to see available commands
 
-.PHONY: help install install-dev test test-unit test-integration test-cov lint lint-fix format format-check fix typecheck check clean run dev \
-        docker-up docker-down docker-logs docker-shell docker-db-shell docker-reset db-migrate db-upgrade db-downgrade db-seed db-seed-flags db-seed-applicants \
-        dev-shell dev-fix-permissions dev-db-migrate dev-db-upgrade dev-db-downgrade dev-db-history dev-db-current dev-db-seed dev-db-seed-flags dev-db-seed-applicants dev-api dev-test dev-test-cov dev-lint dev-fix dev-typecheck dev-check \
+.PHONY: help install install-prod test test-unit test-integration test-cov lint lint-fix format format-check fix typecheck check clean run dev \
+        docker-up docker-down docker-logs docker-db-shell docker-reset db-migrate db-upgrade db-downgrade db-seed db-seed-flags db-seed-applicants \
         frontend-install frontend-dev frontend-build frontend-lint frontend-fix frontend-start
 
 # Default target
@@ -31,11 +30,11 @@ help: ## Show this help message
 # Installation
 #------------------------------------------------------------------------------
 
-install: ## Install production dependencies
-	uv sync
+install: ## Install all dependencies (including dev tools)
+	uv sync --extra dev
 
-install-dev: ## Install all dependencies including dev tools
-	uv pip install -e ".[dev]"
+install-prod: ## Install production dependencies only
+	uv sync
 
 #------------------------------------------------------------------------------
 # Testing
@@ -163,9 +162,6 @@ docker-down: ## Stop all Docker services
 docker-logs: ## View Docker container logs
 	docker compose logs -f
 
-docker-shell: ## Open shell in app container (dev container only)
-	docker compose exec app bash
-
 docker-db-shell: ## Open PostgreSQL shell
 	docker compose exec postgres psql -U applicant_validator -d applicant_validator
 
@@ -198,70 +194,10 @@ db-current: ## Show current migration
 db-seed-flags: ## Seed flag types
 	uv run python scripts/seed_flag_types.py
 
-db-seed-applicants: ## Seed fake applicants
+db-seed-applicants: ## Seed fake applicants (for testing)
 	uv run python scripts/seed_applicants.py
 
-db-seed: db-seed-flags db-seed-applicants ## Seed all data (flags + applicants)
-
-#------------------------------------------------------------------------------
-# Dev Container Commands
-#------------------------------------------------------------------------------
-
-DEV_CONTAINER := applicant_validator_dev
-DEV_EXEC := docker exec $(DEV_CONTAINER)
-DEV_EXEC_IT := docker exec -it $(DEV_CONTAINER)
-DEV_WORKDIR := /workspace
-
-dev-shell: ## Open shell in dev container
-	$(DEV_EXEC_IT) bash
-
-dev-fix-permissions: ## Fix permissions in dev container (run if you get permission errors)
-	$(DEV_EXEC) sudo chown -R vscode:vscode /home/vscode/.cache
-	$(DEV_EXEC) sudo chown -R vscode:vscode /workspace/.venv 2>/dev/null || true
-
-dev-db-migrate: ## Create a new migration in dev container (usage: make dev-db-migrate msg="message")
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run alembic revision --autogenerate -m '$(msg)'"
-
-dev-db-upgrade: ## Apply all pending migrations in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run alembic upgrade head"
-
-dev-db-downgrade: ## Rollback last migration in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run alembic downgrade -1"
-
-dev-db-history: ## Show migration history in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run alembic history"
-
-dev-db-current: ## Show current migration in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run alembic current"
-
-dev-db-seed-flags: ## Seed flag types in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run python scripts/seed_flag_types.py"
-
-dev-db-seed-applicants: ## Seed fake applicants in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run python scripts/seed_applicants.py"
-
-dev-db-seed: dev-db-seed-flags dev-db-seed-applicants ## Seed all data in dev container
-
-dev-api: ## Run API server in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run uvicorn applicant_validator.api.main:app --host 0.0.0.0 --port 8000 --reload"
-
-dev-test: ## Run all tests in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run pytest"
-
-dev-test-cov: ## Run tests with coverage in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run pytest --cov=src --cov-report=term-missing"
-
-dev-lint: ## Run linter in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run ruff check src tests"
-
-dev-fix: ## Fix all linting and formatting issues in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run ruff check src tests --fix && uv run ruff format src tests"
-
-dev-typecheck: ## Run type checker in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run mypy src"
-
-dev-check: ## Run all checks in dev container
-	$(DEV_EXEC) bash -c "cd $(DEV_WORKDIR) && uv run ruff check src tests && uv run mypy src && uv run pytest"
+db-seed: db-seed-flags ## Seed essential data (flags, etc.)
 
 #------------------------------------------------------------------------------
 # Frontend Commands

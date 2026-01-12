@@ -21,6 +21,21 @@ class FlagResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PostingResponse(BaseModel):
+    """Job posting that an applicant applied to."""
+
+    id: UUID
+    lever_posting_id: str
+    title: str
+    team: str | None = None
+    department: str | None = None
+    location: str | None = None
+    commitment: str | None = None
+    state: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class ApplicantResponse(BaseModel):
     """Applicant response model."""
 
@@ -35,6 +50,7 @@ class ApplicantResponse(BaseModel):
     risk_level: str | None = None
     validation_score: float | None = None
     flag_count: int = 0
+    opportunity_count: int = 1
     is_reviewed: bool = False
     is_manually_added: bool = False
     reviewed_at: datetime | None = None
@@ -44,6 +60,7 @@ class ApplicantResponse(BaseModel):
     lever_created_at: datetime | None = None
     flags: list[FlagResponse] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    postings: list[PostingResponse] = Field(default_factory=list)
     assigned_ta: str | None = None
 
     model_config = {"from_attributes": True}
@@ -60,6 +77,7 @@ class ApplicantListResponse(BaseModel):
     location: str | None = None
     risk_level: str | None = None
     flag_count: int = 0
+    opportunity_count: int = 1
     is_reviewed: bool = False
     is_manually_added: bool = False
     reviewed_at: datetime | None = None
@@ -99,3 +117,36 @@ class SourceListResponse(BaseModel):
     """Response with list of applicant sources."""
 
     sources: list[str] = Field(default_factory=list)
+
+
+class FlagTypeResponse(BaseModel):
+    """Flag type for filtering."""
+
+    code: str
+    name: str
+    category: str
+
+
+class FlagTypeListResponse(BaseModel):
+    """Response with list of flag types."""
+
+    flag_types: list[FlagTypeResponse] = Field(default_factory=list)
+
+
+class RiskLevelListResponse(BaseModel):
+    """Response with list of risk levels."""
+
+    risk_levels: list[str] = Field(default_factory=list)
+
+
+class ValidateApplicantResponse(BaseModel):
+    """Response from validating a single applicant."""
+
+    applicant: ApplicantResponse
+    rules_passed: int
+    rules_failed: int
+    rules_skipped: int
+    flags_raised: int
+    previous_risk_level: str | None
+    new_risk_level: str | None
+    message: str

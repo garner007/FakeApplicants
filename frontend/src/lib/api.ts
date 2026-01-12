@@ -2,7 +2,7 @@
  * API client for the Applicant Validator backend.
  */
 
-import type { PaginatedApplicantsResponse, SortField, SortOrder, Applicant, ApplicantDetail } from "./types";
+import type { PaginatedApplicantsResponse, SortField, SortOrder, ApplicantDetail } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -15,6 +15,7 @@ interface FetchApplicantsParams {
   isReviewed?: boolean;
   assignedTa?: string;
   source?: string;
+  flagType?: string;
 }
 
 export async function fetchApplicants({
@@ -26,6 +27,7 @@ export async function fetchApplicants({
   isReviewed,
   assignedTa,
   source,
+  flagType,
 }: FetchApplicantsParams = {}): Promise<PaginatedApplicantsResponse> {
   const params = new URLSearchParams({
     page: page.toString(),
@@ -45,6 +47,9 @@ export async function fetchApplicants({
   }
   if (source) {
     params.set("source", source);
+  }
+  if (flagType) {
+    params.set("flag_type", flagType);
   }
 
   const response = await fetch(`${API_BASE_URL}/applicants?${params.toString()}`);
@@ -169,6 +174,36 @@ export async function getSources(): Promise<string[]> {
 
   const data = await response.json();
   return data.sources;
+}
+
+// Flag Types for filtering
+export interface FlagTypeOption {
+  code: string;
+  name: string;
+  category: string;
+}
+
+export async function getFlagTypes(): Promise<FlagTypeOption[]> {
+  const response = await fetch(`${API_BASE_URL}/applicants/flag-types`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch flag types: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.flag_types;
+}
+
+// Risk Levels for filtering
+export async function getRiskLevels(): Promise<string[]> {
+  const response = await fetch(`${API_BASE_URL}/applicants/risk-levels`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch risk levels: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.risk_levels;
 }
 
 // Validation Rules API
@@ -382,6 +417,7 @@ export interface IntegrationSetting {
   last_test_success: boolean | null;
   last_test_message: string | null;
   notes: string | null;
+  config_json: string | null;
 }
 
 export interface IntegrationListResponse {
@@ -395,6 +431,7 @@ export interface UpdateIntegrationRequest {
   account_id?: string;
   fraud_score_threshold?: number;
   notes?: string;
+  config_json?: string;
 }
 
 export interface TestIntegrationResponse {
@@ -594,6 +631,114 @@ export async function purgeDatabase(request: PurgeRequest): Promise<PurgeRespons
       throw new Error("Must confirm purge operation");
     }
     throw new Error(`Failed to start purge: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// Single Applicant Validation API
+export interface ValidateApplicantResponse {
+  applicant: ApplicantDetail;
+  rules_passed: number;
+  rules_failed: number;
+  rules_skipped: number;
+  flags_raised: number;
+  previous_risk_level: string | null;
+  new_risk_level: string | null;
+  message: string;
+}
+
+export async function validateApplicant(applicantId: string): Promise<ValidateApplicantResponse> {
+  const response = await fetch(`${API_BASE_URL}/applicants/${applicantId}/validate`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Applicant not found");
+    }
+    throw new Error(`Failed to validate applicant: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// Validation Settings API
+export interface ValidationSettingsResponse {
+  mass_applicant_threshold: number;
+}
+
+export interface UpdateValidationSettingsRequest {
+  mass_applicant_threshold?: number;
+}
+
+export async function getValidationSettings(): Promise<ValidationSettingsResponse> {
+  const response = await fetch(`${API_BASE_URL}/settings/validation`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch validation settings: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function updateValidationSettings(
+  data: UpdateValidationSettingsRequest
+): Promise<ValidationSettingsResponse> {
+  const response = await fetch(`${API_BASE_URL}/settings/validation`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update validation settings: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// Auth Settings API
+export interface AuthSettingsResponse {
+  auth_allowed_domain: string;
+  auth_jwt_expiry_hours: string;
+  auth_cookie_name: string;
+  auth_cookie_secure: string;
+  auth_min_password_length: string;
+}
+
+export interface UpdateAuthSettingsRequest {
+  auth_allowed_domain?: string;
+  auth_jwt_expiry_hours?: string;
+  auth_cookie_name?: string;
+  auth_cookie_secure?: string;
+  auth_min_password_length?: string;
+}
+
+export async function getAuthSettings(): Promise<AuthSettingsResponse> {
+  const response = await fetch(`${API_BASE_URL}/admin/auth-settings`, {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch auth settings: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function updateAuthSettings(
+  data: UpdateAuthSettingsRequest
+): Promise<AuthSettingsResponse> {
+  const response = await fetch(`${API_BASE_URL}/admin/auth-settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update auth settings: ${response.statusText}`);
   }
 
   return response.json();

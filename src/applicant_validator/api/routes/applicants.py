@@ -13,11 +13,27 @@ from applicant_validator.api.schemas.applicants import (
     ApplicantResponse,
     ApplicantUpdateRequest,
     FlagResponse,
+    FlagTypeListResponse,
+    FlagTypeResponse,
     PaginatedApplicantsResponse,
+    PostingResponse,
+    RiskLevelListResponse,
     SourceListResponse,
     TAListResponse,
+    ValidateApplicantResponse,
 )
-from applicant_validator.database import Applicant, ApplicantSource, Flag, get_session
+from applicant_validator.database import (
+    Applicant,
+    ApplicantPosting,
+    ApplicantSource,
+    Flag,
+    FlagType,
+    get_session,
+)
+from applicant_validator.services.validation import (
+    ensure_flag_types,
+    validate_applicant,
+)
 
 router = APIRouter(prefix="/applicants", tags=["applicants"])
 
@@ -36,6 +52,21 @@ def _flag_to_response(flag: Flag) -> FlagResponse:
     )
 
 
+def _posting_to_response(applicant_posting: ApplicantPosting) -> PostingResponse:
+    """Convert an ApplicantPosting model to PostingResponse."""
+    posting = applicant_posting.posting
+    return PostingResponse(
+        id=posting.id,
+        lever_posting_id=posting.lever_posting_id,
+        title=posting.title,
+        team=posting.team,
+        department=posting.department,
+        location=posting.location,
+        commitment=posting.commitment,
+        state=posting.state,
+    )
+
+
 def _applicant_to_list_response(applicant: Applicant) -> ApplicantListResponse:
     """Convert an Applicant model to ApplicantListResponse."""
     return ApplicantListResponse(
@@ -47,6 +78,7 @@ def _applicant_to_list_response(applicant: Applicant) -> ApplicantListResponse:
         location=applicant.location,
         risk_level=applicant.risk_level,
         flag_count=applicant.flag_count,
+        opportunity_count=applicant.opportunity_count,
         is_reviewed=applicant.is_reviewed,
         reviewed_at=applicant.reviewed_at,
         created_at=applicant.created_at,
@@ -70,6 +102,7 @@ def _applicant_to_response(applicant: Applicant) -> ApplicantResponse:
         risk_level=applicant.risk_level,
         validation_score=applicant.validation_score,
         flag_count=applicant.flag_count,
+        opportunity_count=applicant.opportunity_count,
         is_reviewed=applicant.is_reviewed,
         reviewed_at=applicant.reviewed_at,
         reviewed_by=applicant.reviewed_by,
@@ -78,6 +111,7 @@ def _applicant_to_response(applicant: Applicant) -> ApplicantResponse:
         lever_created_at=applicant.lever_created_at,
         flags=[_flag_to_response(f) for f in applicant.flags if f.is_active],
         sources=[s.source for s in applicant.sources],
+        postings=[_posting_to_response(p) for p in applicant.postings],
         assigned_ta=applicant.lever_owner_name,
     )
 
@@ -94,6 +128,7 @@ async def list_applicants(
     is_reviewed: bool | None = Query(None, description="Filter by review status"),
     assigned_ta: str | None = Query(None, description="Filter by assigned TA name"),
     source: str | None = Query(None, description="Filter by applicant source"),
+    flag_type: str | None = Query(None, description="Filter by flag type code"),
 ) -> PaginatedApplicantsResponse:
     """List all applicants with pagination and sorting."""
     async with get_session() as session:
@@ -112,6 +147,16 @@ async def list_applicants(
             query = query.where(
                 Applicant.id.in_(
                     select(ApplicantSource.applicant_id).where(ApplicantSource.source == source)
+                )
+            )
+        if flag_type:
+            # Join with Flag and FlagType to filter by flag type code
+            query = query.where(
+                Applicant.id.in_(
+                    select(Flag.applicant_id)
+                    .join(FlagType, Flag.flag_type_id == FlagType.id)
+                    .where(FlagType.code == flag_type)
+                    .where(Flag.is_active == True)  # noqa: E712
                 )
             )
 
@@ -175,6 +220,50 @@ async def list_sources() -> SourceListResponse:
         return SourceListResponse(sources=sources)
 
 
+@router.get("/flag-types", response_model=FlagTypeListResponse)
+async def list_flag_types() -> FlagTypeListResponse:
+    """Get list of flag types that have active flags in the database."""
+    async with get_session() as session:
+        # Only return flag types that have at least one active flag
+        query = (
+            select(FlagType)
+            .where(
+                FlagType.id.in_(
+                    select(Flag.flag_type_id)
+                    .join(Applicant, Flag.applicant_id == Applicant.id)
+                    .where(Flag.is_active == True)  # noqa: E712
+                    .where(Applicant.is_deleted == False)  # noqa: E712
+                    .distinct()
+                )
+            )
+            .order_by(FlagType.category, FlagType.name)
+        )
+        result = await session.execute(query)
+        flag_types = result.scalars().all()
+        return FlagTypeListResponse(
+            flag_types=[
+                FlagTypeResponse(code=ft.code, name=ft.name, category=ft.category)
+                for ft in flag_types
+            ]
+        )
+
+
+@router.get("/risk-levels", response_model=RiskLevelListResponse)
+async def list_risk_levels() -> RiskLevelListResponse:
+    """Get list of risk levels for filtering."""
+    async with get_session() as session:
+        query = (
+            select(Applicant.risk_level)
+            .where(Applicant.is_deleted == False)  # noqa: E712
+            .where(Applicant.risk_level.isnot(None))
+            .distinct()
+            .order_by(Applicant.risk_level)
+        )
+        result = await session.execute(query)
+        risk_levels = [row[0] for row in result.fetchall()]
+        return RiskLevelListResponse(risk_levels=risk_levels)
+
+
 @router.get("/{applicant_id}", response_model=ApplicantResponse)
 async def get_applicant(applicant_id: UUID) -> ApplicantResponse:
     """Get a single applicant by ID."""
@@ -183,7 +272,10 @@ async def get_applicant(applicant_id: UUID) -> ApplicantResponse:
             select(Applicant)
             .where(Applicant.id == applicant_id)
             .where(Applicant.is_deleted == False)  # noqa: E712
-            .options(selectinload(Applicant.flags).selectinload(Flag.flag_type))
+            .options(
+                selectinload(Applicant.flags).selectinload(Flag.flag_type),
+                selectinload(Applicant.postings).selectinload(ApplicantPosting.posting),
+            )
         )
         result = await session.execute(query)
         applicant = result.scalar_one_or_none()
@@ -205,7 +297,10 @@ async def update_applicant(
             select(Applicant)
             .where(Applicant.id == applicant_id)
             .where(Applicant.is_deleted == False)  # noqa: E712
-            .options(selectinload(Applicant.flags).selectinload(Flag.flag_type))
+            .options(
+                selectinload(Applicant.flags).selectinload(Flag.flag_type),
+                selectinload(Applicant.postings).selectinload(ApplicantPosting.posting),
+            )
         )
         result = await session.execute(query)
         applicant = result.scalar_one_or_none()
@@ -229,3 +324,88 @@ async def update_applicant(
         await session.refresh(applicant)
 
         return _applicant_to_response(applicant)
+
+
+@router.post("/{applicant_id}/validate", response_model=ValidateApplicantResponse)
+async def validate_single_applicant(applicant_id: UUID) -> ValidateApplicantResponse:
+    """Run validation rules against a single applicant.
+
+    This endpoint allows on-demand validation of individual applicants,
+    useful for saving API credits by selectively validating profiles.
+    """
+    async with get_session() as session:
+        # Fetch the applicant with all related data
+        query = (
+            select(Applicant)
+            .where(Applicant.id == applicant_id)
+            .where(Applicant.is_deleted == False)  # noqa: E712
+            .options(
+                selectinload(Applicant.flags).selectinload(Flag.flag_type),
+                selectinload(Applicant.postings).selectinload(ApplicantPosting.posting),
+                selectinload(Applicant.sources),
+            )
+        )
+        result = await session.execute(query)
+        applicant = result.scalar_one_or_none()
+
+        if not applicant:
+            raise HTTPException(status_code=404, detail="Applicant not found")
+
+        # Store previous risk level for comparison
+        previous_risk_level = applicant.risk_level
+
+        # Deactivate existing flags before re-validation
+        for flag in applicant.flags:
+            if flag.is_active:
+                flag.is_active = False
+
+        # Reset flag count before validation
+        applicant.flag_count = 0
+
+        # Ensure flag types exist
+        flag_types = await ensure_flag_types(session)
+
+        # Run validation
+        validation_run = await validate_applicant(
+            session=session,
+            applicant=applicant,
+            flag_types=flag_types,
+            triggered_by="manual",
+        )
+
+        await session.commit()
+
+        # Refresh to get updated flags
+        await session.refresh(applicant)
+
+        # Reload flags with their types for the response
+        query = (
+            select(Applicant)
+            .where(Applicant.id == applicant_id)
+            .options(
+                selectinload(Applicant.flags).selectinload(Flag.flag_type),
+                selectinload(Applicant.postings).selectinload(ApplicantPosting.posting),
+                selectinload(Applicant.sources),
+            )
+        )
+        result = await session.execute(query)
+        applicant = result.scalar_one_or_none()
+
+        # Build response message
+        if validation_run.flags_raised == 0:
+            message = "Validation complete. No issues found."
+        elif validation_run.flags_raised == 1:
+            message = "Validation complete. 1 issue flagged."
+        else:
+            message = f"Validation complete. {validation_run.flags_raised} issues flagged."
+
+        return ValidateApplicantResponse(
+            applicant=_applicant_to_response(applicant),
+            rules_passed=validation_run.rules_passed,
+            rules_failed=validation_run.rules_failed,
+            rules_skipped=validation_run.rules_skipped,
+            flags_raised=validation_run.flags_raised,
+            previous_risk_level=previous_risk_level,
+            new_risk_level=applicant.risk_level,
+            message=message,
+        )

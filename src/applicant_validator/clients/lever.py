@@ -3,6 +3,7 @@
 import base64
 from datetime import UTC, datetime
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import httpx
 
@@ -104,18 +105,51 @@ class LeverClient(BaseClient):
                 status_code=status_code,
             ) from e
 
+    def _sanitize_linkedin_url(self, url: str) -> str | None:
+        """Sanitize a LinkedIn URL by stripping tracking parameters.
+
+        Keeps the URL even if it's not a profile URL (e.g., job postings),
+        as non-profile URLs can be used for flagging suspicious applicants.
+
+        Args:
+            url: Raw LinkedIn URL.
+
+        Returns:
+            Clean LinkedIn URL without query parameters, or None if not LinkedIn.
+        """
+        try:
+            parsed = urlparse(url)
+
+            # Must be linkedin.com domain
+            if "linkedin.com" not in parsed.netloc.lower():
+                return None
+
+            # Extract just the path, ignoring query parameters
+            path = parsed.path.rstrip("/")
+
+            if not path:
+                return None
+
+            # Reconstruct clean URL without tracking params
+            return f"https://www.linkedin.com{path}"
+
+        except Exception:
+            return None
+
     def _extract_linkedin_url(self, links: list[str]) -> str | None:
-        """Extract LinkedIn URL from list of links.
+        """Extract and sanitize LinkedIn URL from list of links.
 
         Args:
             links: List of URL strings.
 
         Returns:
-            LinkedIn URL if found, None otherwise.
+            Clean LinkedIn URL if found, None otherwise.
         """
         for link in links:
             if "linkedin.com" in link.lower():
-                return link
+                sanitized = self._sanitize_linkedin_url(link)
+                if sanitized:
+                    return sanitized
         return None
 
     def _parse_candidate(self, data: dict[str, Any]) -> Applicant:
@@ -233,5 +267,53 @@ class LeverClient(BaseClient):
             params["offset"] = offset
 
         response = await self._make_lever_request("GET", "/opportunities", params=params)
+
+        return cast("list[dict[str, Any]]", response.get("data", []))
+
+    async def get_opportunity(self, opportunity_id: str) -> dict[str, Any]:
+        """Get single opportunity by ID.
+
+        Args:
+            opportunity_id: Lever opportunity ID.
+
+        Returns:
+            Opportunity dictionary with posting info.
+        """
+        response = await self._make_lever_request("GET", f"/opportunities/{opportunity_id}")
+        return cast("dict[str, Any]", response.get("data", {}))
+
+    async def get_posting(self, posting_id: str) -> dict[str, Any]:
+        """Get posting (job) details by ID.
+
+        Args:
+            posting_id: Lever posting ID.
+
+        Returns:
+            Posting dictionary with job details.
+        """
+        response = await self._make_lever_request("GET", f"/postings/{posting_id}")
+        return cast("dict[str, Any]", response.get("data", {}))
+
+    async def get_postings(
+        self,
+        limit: int | None = None,
+        offset: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get list of all postings (jobs).
+
+        Args:
+            limit: Maximum number of postings to return.
+            offset: Pagination cursor.
+
+        Returns:
+            List of posting dictionaries.
+        """
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+
+        response = await self._make_lever_request("GET", "/postings", params=params)
 
         return cast("list[dict[str, Any]]", response.get("data", []))

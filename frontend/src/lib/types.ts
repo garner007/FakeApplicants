@@ -13,6 +13,17 @@ export interface Flag {
   created_at: string;
 }
 
+export interface Posting {
+  id: string;
+  lever_posting_id: string;
+  title: string;
+  team: string | null;
+  department: string | null;
+  location: string | null;
+  commitment: string | null;
+  state: string | null;
+}
+
 export interface Applicant {
   id: string;
   lever_id: string;
@@ -22,6 +33,7 @@ export interface Applicant {
   location: string | null;
   risk_level: string | null;
   flag_count: number;
+  opportunity_count: number;
   is_reviewed: boolean;
   reviewed_at: string | null;
   created_at: string;
@@ -37,6 +49,7 @@ export interface ApplicantDetail extends Applicant {
   validation_score: number | null;
   reviewed_by: string | null;
   updated_at: string;
+  postings: Posting[];
 }
 
 export interface PaginatedApplicantsResponse {

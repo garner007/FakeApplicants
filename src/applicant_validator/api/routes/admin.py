@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 
+from applicant_validator.api.dependencies.auth import AdminUser
 from applicant_validator.database import (
     Applicant,
     ApplicantSource,
@@ -25,6 +26,12 @@ from applicant_validator.database import (
     ValidationRun,
     ValidationRunConfig,
     get_session,
+)
+from applicant_validator.services.auth_settings import (
+    AUTH_SETTING_KEYS,
+    get_all_auth_settings,
+    get_auth_settings_cache,
+    set_auth_setting,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -252,3 +259,99 @@ async def purge_database(
         message="Database purge started",
         status=PurgeStatus.RUNNING,
     )
+
+
+# Auth Settings Models
+class AuthSettingsResponse(BaseModel):
+    """Auth settings response."""
+
+    auth_allowed_domain: str = Field(description="Email domain restriction (empty = allow all)")
+    auth_jwt_expiry_hours: str = Field(description="JWT token expiry in hours")
+    auth_cookie_name: str = Field(description="Session cookie name")
+    auth_cookie_secure: str = Field(description="Require HTTPS for cookies (true/false)")
+    auth_min_password_length: str = Field(description="Minimum password length")
+
+
+class AuthSettingsUpdate(BaseModel):
+    """Auth settings update request."""
+
+    auth_allowed_domain: str | None = None
+    auth_jwt_expiry_hours: str | None = None
+    auth_cookie_name: str | None = None
+    auth_cookie_secure: str | None = None
+    auth_min_password_length: str | None = None
+
+
+@router.get("/auth-settings", response_model=AuthSettingsResponse)
+async def get_auth_settings(
+    admin_user: AdminUser,  # Require admin access
+) -> AuthSettingsResponse:
+    """Get all auth settings.
+
+    Requires admin privileges.
+    Note: JWT secret is not exposed through this endpoint.
+    """
+    async with get_session() as session:
+        settings = await get_all_auth_settings(session)
+        return AuthSettingsResponse(**settings)
+
+
+@router.patch("/auth-settings", response_model=AuthSettingsResponse)
+async def update_auth_settings(
+    request: AuthSettingsUpdate,
+    admin_user: AdminUser,  # Require admin access
+) -> AuthSettingsResponse:
+    """Update auth settings.
+
+    Requires admin privileges.
+    Only provided fields will be updated.
+    Note: JWT secret cannot be modified through this endpoint.
+    """
+    async with get_session() as session:
+        # Update only provided fields
+        updates = request.model_dump(exclude_none=True)
+
+        for key, value in updates.items():
+            if key not in AUTH_SETTING_KEYS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid setting key: {key}",
+                )
+            # Validate values
+            if key == "auth_jwt_expiry_hours":
+                try:
+                    hours = int(value)
+                    if hours < 1 or hours > 8760:  # Max 1 year
+                        raise ValueError("Hours must be between 1 and 8760")
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid value for {key}: {e}",
+                    ) from e
+            elif key == "auth_min_password_length":
+                try:
+                    length = int(value)
+                    if length < 6 or length > 128:
+                        raise ValueError("Password length must be between 6 and 128")
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid value for {key}: {e}",
+                    ) from e
+            elif key == "auth_cookie_secure":
+                if value.lower() not in ("true", "false"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid value for {key}: must be 'true' or 'false'",
+                    )
+
+            await set_auth_setting(session, key, value)
+
+        await session.commit()
+
+        # Refresh cache
+        all_settings = await get_all_auth_settings(session)
+        cache = get_auth_settings_cache()
+        cache.refresh_sync(all_settings)
+
+        return AuthSettingsResponse(**all_settings)

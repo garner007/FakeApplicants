@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchApplicants, getTAs, getSources } from "@/lib/api";
+import { fetchApplicants, getTAs, getSources, getRiskLevels, getFlagTypes, type FlagTypeOption } from "@/lib/api";
 import type { Applicant, SortField, SortOrder } from "@/lib/types";
 
 export default function Home() {
@@ -29,6 +29,10 @@ export default function Home() {
   const [selectedTa, setSelectedTa] = useState<string>("");
   const [sources, setSources] = useState<string[]>([]);
   const [selectedSource, setSelectedSource] = useState<string>("");
+  const [riskLevels, setRiskLevels] = useState<string[]>([]);
+  const [selectedRiskLevel, setSelectedRiskLevel] = useState<string>("");
+  const [flagTypes, setFlagTypes] = useState<FlagTypeOption[]>([]);
+  const [selectedFlagType, setSelectedFlagType] = useState<string>("");
 
   const loadApplicants = useCallback(async () => {
     setLoading(true);
@@ -41,6 +45,8 @@ export default function Home() {
         sortOrder,
         assignedTa: selectedTa || undefined,
         source: selectedSource || undefined,
+        riskLevel: selectedRiskLevel || undefined,
+        flagType: selectedFlagType || undefined,
       });
       setApplicants(response.items);
       setTotalPages(response.total_pages);
@@ -50,7 +56,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [page, sortBy, sortOrder, selectedTa, selectedSource]);
+  }, [page, sortBy, sortOrder, selectedTa, selectedSource, selectedRiskLevel, selectedFlagType]);
 
   const loadTAs = useCallback(async () => {
     try {
@@ -70,6 +76,24 @@ export default function Home() {
     }
   }, []);
 
+  const loadRiskLevels = useCallback(async () => {
+    try {
+      const riskLevelList = await getRiskLevels();
+      setRiskLevels(riskLevelList);
+    } catch (err) {
+      console.error("Failed to load risk levels:", err);
+    }
+  }, []);
+
+  const loadFlagTypes = useCallback(async () => {
+    try {
+      const flagTypeList = await getFlagTypes();
+      setFlagTypes(flagTypeList);
+    } catch (err) {
+      console.error("Failed to load flag types:", err);
+    }
+  }, []);
+
   useEffect(() => {
     loadApplicants();
   }, [loadApplicants]);
@@ -81,6 +105,14 @@ export default function Home() {
   useEffect(() => {
     loadSources();
   }, [loadSources]);
+
+  useEffect(() => {
+    loadRiskLevels();
+  }, [loadRiskLevels]);
+
+  useEffect(() => {
+    loadFlagTypes();
+  }, [loadFlagTypes]);
 
   const handleSort = (field: SortField) => {
     if (field === sortBy) {
@@ -99,6 +131,16 @@ export default function Home() {
 
   const handleSourceChange = (value: string) => {
     setSelectedSource(value === "all" ? "" : value);
+    setPage(1);
+  };
+
+  const handleRiskLevelChange = (value: string) => {
+    setSelectedRiskLevel(value === "all" ? "" : value);
+    setPage(1);
+  };
+
+  const handleFlagTypeChange = (value: string) => {
+    setSelectedFlagType(value === "all" ? "" : value);
     setPage(1);
   };
 
@@ -132,13 +174,13 @@ export default function Home() {
           </div>
         )}
 
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="mb-4 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <p className="text-sm text-gray-600">
               {loading ? "Loading..." : `${total} applicants found`}
             </p>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Filter by TA:</span>
+              <span className="text-sm font-medium text-gray-700">TA:</span>
               <Select value={selectedTa || "all"} onValueChange={handleTaChange}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="All TAs" />
@@ -154,9 +196,9 @@ export default function Home() {
               </Select>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Filter by Source:</span>
+              <span className="text-sm font-medium text-gray-700">Source:</span>
               <Select value={selectedSource || "all"} onValueChange={handleSourceChange}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="All Sources" />
                 </SelectTrigger>
                 <SelectContent>
@@ -164,6 +206,38 @@ export default function Home() {
                   {sources.map((source) => (
                     <SelectItem key={source} value={source}>
                       {source}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Risk Level:</span>
+              <Select value={selectedRiskLevel || "all"} onValueChange={handleRiskLevelChange}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="All Levels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels</SelectItem>
+                  {riskLevels.map((level) => (
+                    <SelectItem key={level} value={level}>
+                      {level.charAt(0).toUpperCase() + level.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Flag:</span>
+              <Select value={selectedFlagType || "all"} onValueChange={handleFlagTypeChange}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All Flags" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Flags</SelectItem>
+                  {flagTypes.map((flagType) => (
+                    <SelectItem key={flagType.code} value={flagType.code}>
+                      {flagType.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

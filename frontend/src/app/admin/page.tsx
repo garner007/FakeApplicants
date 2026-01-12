@@ -5,14 +5,21 @@ import {
   getDatabaseStats,
   getPurgeStatus,
   purgeDatabase,
+  getValidationSettings,
+  updateValidationSettings,
+  getAuthSettings,
+  updateAuthSettings,
   type DatabaseStatsResponse,
   type PurgeStatusResponse,
   type PurgeStatus,
+  type ValidationSettingsResponse,
+  type AuthSettingsResponse,
 } from "@/lib/api";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -64,19 +71,40 @@ function StatusBadge({ status }: { status: PurgeStatus }) {
 export default function AdminPage() {
   const [stats, setStats] = useState<DatabaseStatsResponse | null>(null);
   const [purgeStatus, setPurgeStatus] = useState<PurgeStatusResponse | null>(null);
+  const [validationSettings, setValidationSettings] = useState<ValidationSettingsResponse | null>(null);
+  const [authSettings, setAuthSettings] = useState<AuthSettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keepFlagTypes, setKeepFlagTypes] = useState(true);
   const [isPurging, setIsPurging] = useState(false);
+  const [massApplicantThreshold, setMassApplicantThreshold] = useState<number>(5);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  // Auth settings form state
+  const [allowedDomain, setAllowedDomain] = useState<string>("");
+  const [jwtExpiryHours, setJwtExpiryHours] = useState<string>("24");
+  const [cookieSecure, setCookieSecure] = useState<boolean>(false);
+  const [minPasswordLength, setMinPasswordLength] = useState<string>("8");
+  const [savingAuthSettings, setSavingAuthSettings] = useState(false);
+  const [authSettingsSaved, setAuthSettingsSaved] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [statsData, statusData] = await Promise.all([
+      const [statsData, statusData, settingsData, authData] = await Promise.all([
         getDatabaseStats(),
         getPurgeStatus(),
+        getValidationSettings(),
+        getAuthSettings(),
       ]);
       setStats(statsData);
       setPurgeStatus(statusData);
+      setValidationSettings(settingsData);
+      setMassApplicantThreshold(settingsData.mass_applicant_threshold);
+      setAuthSettings(authData);
+      setAllowedDomain(authData.auth_allowed_domain);
+      setJwtExpiryHours(authData.auth_jwt_expiry_hours);
+      setCookieSecure(authData.auth_cookie_secure === "true");
+      setMinPasswordLength(authData.auth_min_password_length);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -124,6 +152,45 @@ export default function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start purge");
       setIsPurging(false);
+    }
+  };
+
+  const handleSaveValidationSettings = async () => {
+    setSavingSettings(true);
+    setSettingsSaved(false);
+    setError(null);
+    try {
+      const updated = await updateValidationSettings({
+        mass_applicant_threshold: massApplicantThreshold,
+      });
+      setValidationSettings(updated);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save settings");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSaveAuthSettings = async () => {
+    setSavingAuthSettings(true);
+    setAuthSettingsSaved(false);
+    setError(null);
+    try {
+      const updated = await updateAuthSettings({
+        auth_allowed_domain: allowedDomain,
+        auth_jwt_expiry_hours: jwtExpiryHours,
+        auth_cookie_secure: cookieSecure ? "true" : "false",
+        auth_min_password_length: minPasswordLength,
+      });
+      setAuthSettings(updated);
+      setAuthSettingsSaved(true);
+      setTimeout(() => setAuthSettingsSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save auth settings");
+    } finally {
+      setSavingAuthSettings(false);
     }
   };
 
@@ -210,6 +277,176 @@ export default function AdminPage() {
               <Button variant="outline" size="sm" onClick={loadData}>
                 Refresh Stats
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Validation Settings */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span className="text-2xl">⚙️</span>
+              Validation Settings
+            </CardTitle>
+            <CardDescription>
+              Configure thresholds and parameters for applicant validation rules.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Mass Applicant Threshold */}
+              <div className="space-y-2">
+                <Label htmlFor="mass-threshold" className="text-sm font-medium">
+                  Mass Applicant Threshold
+                </Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    id="mass-threshold"
+                    type="number"
+                    min={2}
+                    max={50}
+                    value={massApplicantThreshold}
+                    onChange={(e) => setMassApplicantThreshold(parseInt(e.target.value) || 5)}
+                    className="w-24"
+                    disabled={savingSettings}
+                  />
+                  <span className="text-sm text-gray-500">
+                    applications
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Applicants who apply to this many or more jobs will be flagged as &quot;Mass Applicants&quot;.
+                  Current setting: {validationSettings?.mass_applicant_threshold ?? 5}
+                </p>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-4">
+                <Button
+                  onClick={handleSaveValidationSettings}
+                  disabled={savingSettings || massApplicantThreshold === validationSettings?.mass_applicant_threshold}
+                >
+                  {savingSettings ? "Saving..." : "Save Settings"}
+                </Button>
+                {settingsSaved && (
+                  <span className="text-sm text-green-600">Settings saved successfully!</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Authentication Settings */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span className="text-2xl">🔐</span>
+              Authentication Settings
+            </CardTitle>
+            <CardDescription>
+              Configure authentication and security settings. JWT secret is auto-generated and stored securely.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Allowed Domain */}
+              <div className="space-y-2">
+                <Label htmlFor="allowed-domain" className="text-sm font-medium">
+                  Allowed Email Domain
+                </Label>
+                <Input
+                  id="allowed-domain"
+                  type="text"
+                  placeholder="company.com"
+                  value={allowedDomain}
+                  onChange={(e) => setAllowedDomain(e.target.value)}
+                  className="w-64"
+                  disabled={savingAuthSettings}
+                />
+                <p className="text-xs text-gray-500">
+                  Restrict user accounts to this email domain. Leave empty to allow all domains.
+                </p>
+              </div>
+
+              {/* JWT Expiry Hours */}
+              <div className="space-y-2">
+                <Label htmlFor="jwt-expiry" className="text-sm font-medium">
+                  Session Duration (hours)
+                </Label>
+                <Input
+                  id="jwt-expiry"
+                  type="number"
+                  min={1}
+                  max={8760}
+                  value={jwtExpiryHours}
+                  onChange={(e) => setJwtExpiryHours(e.target.value)}
+                  className="w-24"
+                  disabled={savingAuthSettings}
+                />
+                <p className="text-xs text-gray-500">
+                  How long user sessions remain valid (1-8760 hours). Current: {authSettings?.auth_jwt_expiry_hours ?? 24}h
+                </p>
+              </div>
+
+              {/* Minimum Password Length */}
+              <div className="space-y-2">
+                <Label htmlFor="min-password" className="text-sm font-medium">
+                  Minimum Password Length
+                </Label>
+                <Input
+                  id="min-password"
+                  type="number"
+                  min={6}
+                  max={128}
+                  value={minPasswordLength}
+                  onChange={(e) => setMinPasswordLength(e.target.value)}
+                  className="w-24"
+                  disabled={savingAuthSettings}
+                />
+                <p className="text-xs text-gray-500">
+                  Minimum characters required for passwords (6-128).
+                </p>
+              </div>
+
+              {/* Cookie Secure */}
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="cookie-secure"
+                  checked={cookieSecure}
+                  onCheckedChange={setCookieSecure}
+                  disabled={savingAuthSettings}
+                />
+                <Label htmlFor="cookie-secure" className="text-sm">
+                  Require HTTPS for session cookies (enable in production)
+                </Label>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-4">
+                <Button
+                  onClick={handleSaveAuthSettings}
+                  disabled={savingAuthSettings}
+                >
+                  {savingAuthSettings ? "Saving..." : "Save Auth Settings"}
+                </Button>
+                {authSettingsSaved && (
+                  <span className="text-sm text-green-600">Auth settings saved successfully!</span>
+                )}
+              </div>
+
+              {/* Info box */}
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">ℹ️</span>
+                  <div>
+                    <h4 className="font-semibold text-blue-800">Secure JWT Secret</h4>
+                    <p className="text-sm text-blue-700 mt-1">
+                      The JWT signing secret is auto-generated on first startup and stored in the database.
+                      It cannot be viewed or modified through this interface for security reasons.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -15,13 +15,15 @@ class TestLeverClientInit:
 
     def test_creation_with_api_key(self) -> None:
         """LeverClient should be creatable with API key."""
-        client = LeverClient(api_key="test_api_key")
-        assert client.api_key == "test_api_key"
+        client = LeverClient(
+            api_key="test_api_key"  # pragma: allowlist secret
+        )
+        assert client.api_key == "test_api_key"  # pragma: allowlist secret
         assert client.service_name == "Lever"
 
     def test_default_sandbox_environment(self) -> None:
         """LeverClient should default to sandbox environment."""
-        client = LeverClient(api_key="test_api_key")
+        client = LeverClient(api_key="test_api_key")  # pragma: allowlist secret
         assert client.environment == "sandbox"
         assert "sandbox" in client.base_url
 
@@ -90,7 +92,7 @@ class TestLeverClientGetApplicants:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicants = await client.get_applicants()
 
         assert len(applicants) == 2
@@ -108,7 +110,7 @@ class TestLeverClientGetApplicants:
             return_value=httpx.Response(200, json={"data": [], "hasNext": False})
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             await client.get_applicants(limit=10)
 
         assert "limit=10" in str(route.calls.last.request.url)
@@ -121,7 +123,7 @@ class TestLeverClientGetApplicants:
             return_value=httpx.Response(200, json={"data": [], "hasNext": False})
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             await client.get_applicants(offset="cursor123")
 
         assert "offset=cursor123" in str(route.calls.last.request.url)
@@ -134,7 +136,7 @@ class TestLeverClientGetApplicants:
             return_value=httpx.Response(200, json={"data": [], "hasNext": False})
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicants = await client.get_applicants()
 
         assert applicants == []
@@ -167,7 +169,7 @@ class TestLeverClientGetApplicant:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicant = await client.get_applicant("abc123")
 
         assert applicant.id == "abc123"
@@ -182,7 +184,7 @@ class TestLeverClientGetApplicant:
             return_value=httpx.Response(404, json={"error": "Not found"})
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             with pytest.raises(ApplicantNotFoundError) as exc_info:
                 await client.get_applicant("nonexistent")
 
@@ -218,7 +220,7 @@ class TestLeverClientGetOpportunities:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             opportunities = await client.get_opportunities()
 
         assert len(opportunities) == 2
@@ -245,7 +247,7 @@ class TestLeverClientGetOpportunities:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             opportunities = await client.get_opportunities(candidate_id="abc123")
 
         assert "contact_id=abc123" in str(route.calls.last.request.url)
@@ -269,7 +271,7 @@ class TestLeverClientGetOpportunities:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             opportunities = await client.get_opportunities(limit=10, offset="cursor123")
 
         url_str = str(route.calls.last.request.url)
@@ -289,7 +291,7 @@ class TestLeverClientErrorHandling:
             return_value=httpx.Response(401, json={"error": "Unauthorized"})
         )
 
-        async with LeverClient(api_key="bad_key") as client:
+        async with LeverClient(api_key="bad_key") as client:  # pragma: allowlist secret
             with pytest.raises(LeverAPIError) as exc_info:
                 await client.get_applicants()
 
@@ -303,7 +305,7 @@ class TestLeverClientErrorHandling:
             return_value=httpx.Response(403, json={"error": "Forbidden"})
         )
 
-        async with LeverClient(api_key="limited_key") as client:
+        async with LeverClient(api_key="limited_key") as client:  # pragma: allowlist secret
             with pytest.raises(LeverAPIError) as exc_info:
                 await client.get_applicants()
 
@@ -319,7 +321,7 @@ class TestLeverClientErrorHandling:
             httpx.Response(200, json={"data": [], "hasNext": False}),
         ]
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicants = await client.get_applicants()
 
         assert applicants == []
@@ -357,10 +359,11 @@ class TestLeverClientDataTransformation:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicant = await client.get_applicant("abc123")
 
-        assert applicant.linkedin_url == "https://linkedin.com/in/johndoe"
+        # URL is sanitized to consistent www.linkedin.com format
+        assert applicant.linkedin_url == "https://www.linkedin.com/in/johndoe"
 
     @pytest.mark.asyncio
     @respx.mock
@@ -386,7 +389,7 @@ class TestLeverClientDataTransformation:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicant = await client.get_applicant("abc123")
 
         assert applicant.linkedin_url is None
@@ -415,7 +418,7 @@ class TestLeverClientDataTransformation:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicant = await client.get_applicant("abc123")
 
         assert applicant.created_at.year == 2024
@@ -449,7 +452,7 @@ class TestLeverClientDataTransformation:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicant = await client.get_applicant("abc123")
 
         assert applicant.phone == "+1-555-1234"
@@ -478,7 +481,230 @@ class TestLeverClientDataTransformation:
             return_value=httpx.Response(200, json=mock_response)
         )
 
-        async with LeverClient(api_key="test_key") as client:
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
             applicant = await client.get_applicant("abc123")
 
         assert applicant.email == "primary@example.com"
+
+
+class TestLeverClientLinkedInUrlSanitization:
+    """Tests for LinkedIn URL sanitization."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_strips_tracking_parameters_from_linkedin_url(self) -> None:
+        """Should strip tracking parameters from LinkedIn URLs."""
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": ["https://www.linkedin.com/in/johndoe?trk=nav_responsive_tab_profile"],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        assert applicant.linkedin_url == "https://www.linkedin.com/in/johndoe"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_keeps_linkedin_job_urls_for_flagging(self) -> None:
+        """Should keep LinkedIn job URLs (stripped) for flagging purposes."""
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": ["https://www.linkedin.com/jobs/view/4358420429/?trackingId=abc123"],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        # Job URLs are kept (stripped) so they can be flagged during validation
+        assert applicant.linkedin_url == "https://www.linkedin.com/jobs/view/4358420429"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_keeps_linkedin_company_urls_for_flagging(self) -> None:
+        """Should keep LinkedIn company URLs for flagging purposes."""
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": ["https://www.linkedin.com/company/acme-corp"],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        # Company URLs are kept so they can be flagged
+        assert applicant.linkedin_url == "https://www.linkedin.com/company/acme-corp"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_handles_linkedin_pub_urls(self) -> None:
+        """Should accept LinkedIn /pub/ profile URLs (older format)."""
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": ["https://www.linkedin.com/pub/john-doe/12/345/678"],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        assert applicant.linkedin_url == "https://www.linkedin.com/pub/john-doe/12/345/678"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_normalizes_linkedin_url_with_trailing_slash(self) -> None:
+        """Should normalize LinkedIn URLs with trailing slashes."""
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": ["https://www.linkedin.com/in/johndoe/"],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        assert applicant.linkedin_url == "https://www.linkedin.com/in/johndoe"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_strips_params_from_very_long_linkedin_url(self) -> None:
+        """Should strip params from very long LinkedIn URLs to avoid DB overflow."""
+        # This is the actual URL pattern that caused the database error
+        long_url = (
+            "https://www.linkedin.com/jobs/view/4358420429/?trackingId=yHapSTqfQoGHUCezEPnP%2Fg%3D%3D"
+            "&refId=UvFhg4TPS6yWXyabrYsCvQ%3D%3D&midToken=AQHJFDwpeMF5lg"
+            "&trk=eml-email_job_alert_digest_01-job_position_card-1-cta_url"
+            "&trkEmail=eml-email_job_alert_digest_01-job_position_card-1-cta_url"
+            "&mcid=6747401789" + "a" * 200  # Add extra characters to make it very long
+        )
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": [long_url],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        # URL is kept but stripped of params - well under 500 char limit
+        assert applicant.linkedin_url == "https://www.linkedin.com/jobs/view/4358420429"
+        assert len(applicant.linkedin_url) < 500
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_returns_first_linkedin_url_found(self) -> None:
+        """When multiple LinkedIn URLs exist, should return the first one found."""
+        mock_response = {
+            "data": {
+                "id": "abc123",
+                "name": "John Doe",
+                "emails": ["john@example.com"],
+                "phones": [],
+                "links": [
+                    "https://www.linkedin.com/jobs/view/123456",
+                    "https://www.linkedin.com/in/johndoe",
+                ],
+                "location": None,
+                "headline": None,
+                "sources": [],
+                "createdAt": 1704067200000,
+                "opportunityIds": ["opp123"],
+                "stageChanges": [{"toStageId": "stage1"}],
+            }
+        }
+
+        respx.get("https://api.sandbox.lever.co/v1/candidates/abc123").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+
+        async with LeverClient(api_key="test_key") as client:  # pragma: allowlist secret
+            applicant = await client.get_applicant("abc123")
+
+        # Returns first LinkedIn URL found (job URL in this case)
+        assert applicant.linkedin_url == "https://www.linkedin.com/jobs/view/123456"

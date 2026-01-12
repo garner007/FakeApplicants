@@ -95,6 +95,15 @@ class AuditAction(str, Enum):
     EXPORT = "export"
 
 
+class UserRole(str, Enum):
+    """User roles for access control."""
+
+    SUPERADMIN = "superadmin"  # Full access + manage admins + system settings
+    ADMIN = "admin"  # Full access + manage users (not superadmins)
+    USER = "user"  # View + edit applicants, run validations
+    VIEWER = "viewer"  # Read-only access
+
+
 # =============================================================================
 # Mixins
 # =============================================================================
@@ -217,6 +226,12 @@ class Applicant(Base, TimestampMixin, SoftDeleteMixin):
     # These applicants may have missing email/phone which is expected
     is_manually_added: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Mass applicant detection fields
+    # Track counts of jobs applied to and contact info provided
+    opportunity_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    email_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    phone_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
     # Relationships
     linkedin_profile: Mapped["LinkedInProfile | None"] = relationship(
         back_populates="applicant",
@@ -235,6 +250,11 @@ class Applicant(Base, TimestampMixin, SoftDeleteMixin):
     flags: Mapped[list["Flag"]] = relationship(
         back_populates="applicant",
         lazy="selectin",
+    )
+    postings: Mapped[list["ApplicantPosting"]] = relationship(
+        back_populates="applicant",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
     # Indexes
@@ -1155,8 +1175,9 @@ class IntegrationSetting(Base, TimestampMixin):
 
     # API credentials (stored as key-value pairs in JSON-like structure)
     # For simple cases, we use separate columns
-    api_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    api_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Using Text to support long JWT tokens (e.g., Lever API keys)
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Additional configuration (JSON string for flexibility)
@@ -1210,3 +1231,323 @@ class IntegrationSetting(Base, TimestampMixin):
         if len(self.api_secret) <= 8:
             return "****"
         return f"{self.api_secret[:4]}...{self.api_secret[-4:]}"
+
+
+# =============================================================================
+# Lever Posting Models
+# =============================================================================
+
+
+class LeverPosting(Base, TimestampMixin):
+    """Lever job posting/opportunity details.
+
+    Stores job posting information from Lever to display
+    which jobs applicants have applied to.
+    """
+
+    __tablename__ = "lever_postings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Lever identifiers
+    lever_posting_id: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Job details
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    team: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Full-time, Part-time, etc.
+    commitment: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Status: published, internal, closed
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Lever metadata
+    lever_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Relationships
+    applicant_postings: Mapped[list["ApplicantPosting"]] = relationship(
+        back_populates="posting",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<LeverPosting {self.title} ({self.lever_posting_id})>"
+
+
+class ApplicantPosting(Base, TimestampMixin):
+    """Junction table linking applicants to job postings they applied to.
+
+    This enables tracking which jobs each applicant has applied to,
+    which is useful for mass applicant detection and review.
+    """
+
+    __tablename__ = "applicant_postings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    applicant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applicants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    posting_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("lever_postings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Lever opportunity ID for this specific application
+    lever_opportunity_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+    )
+
+    # Application details
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    stage: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Relationships
+    applicant: Mapped["Applicant"] = relationship(back_populates="postings")
+    posting: Mapped["LeverPosting"] = relationship(back_populates="applicant_postings")
+
+    __table_args__ = (
+        UniqueConstraint("applicant_id", "posting_id", name="uq_applicant_posting"),
+        UniqueConstraint("lever_opportunity_id", name="uq_lever_opportunity_id"),
+    )
+
+
+# =============================================================================
+# System Configuration
+# =============================================================================
+
+
+class SystemConfig(Base, TimestampMixin):
+    """System configuration key-value store.
+
+    Stores configurable settings like validation thresholds that can be
+    adjusted through the admin panel without code changes.
+    """
+
+    __tablename__ = "system_config"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Configuration key (e.g., "mass_applicant_threshold")
+    key: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Configuration value (stored as string, parsed by consumers)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Human-readable description
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Value type hint for UI (integer, string, boolean, json)
+    value_type: Mapped[str] = mapped_column(
+        String(50),
+        default="string",
+        nullable=False,
+    )
+
+    # Category for grouping in UI
+    category: Mapped[str] = mapped_column(
+        String(100),
+        default="general",
+        nullable=False,
+        index=True,
+    )
+
+    # Whether this setting is editable via UI
+    is_editable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<SystemConfig {self.key}={self.value}>"
+
+
+# =============================================================================
+# Authentication Models
+# =============================================================================
+
+
+class User(Base, TimestampMixin, SoftDeleteMixin):
+    """User account for authentication.
+
+    Users are created by admins only (no self-registration).
+    Superadmin is seeded during initial setup.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    # Authentication
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Profile
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Role and permissions
+    role: Mapped[str] = mapped_column(
+        String(50),
+        default=UserRole.USER.value,
+        nullable=False,
+        index=True,
+    )
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    must_change_email: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    # Activity tracking
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Audit: who created this user
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    # Relationships
+    created_by: Mapped["User | None"] = relationship(
+        "User",
+        remote_side="User.id",
+        foreign_keys=[created_by_id],
+    )
+    sessions: Mapped[list["UserSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<User {self.email} role={self.role}>"
+
+    @property
+    def is_admin(self) -> bool:
+        """Check if user has admin privileges."""
+        return self.role in (UserRole.ADMIN.value, UserRole.SUPERADMIN.value)
+
+    @property
+    def is_superadmin(self) -> bool:
+        """Check if user is superadmin."""
+        return self.role == UserRole.SUPERADMIN.value
+
+
+class UserSession(Base, TimestampMixin):
+    """User session for JWT token tracking.
+
+    Allows session revocation and tracking.
+    """
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # JWT identifier for this session
+    jti: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Expiration
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    # Revocation status
+    is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Client info for security auditing
+    ip_address: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="sessions")
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<UserSession {self.jti[:8]}... user={self.user_id}>"
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if session is still valid."""
+        from datetime import UTC
+
+        return not self.is_revoked and self.expires_at > datetime.now(UTC)

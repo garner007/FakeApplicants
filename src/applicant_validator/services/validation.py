@@ -20,6 +20,8 @@ from applicant_validator.database import (
 )
 from applicant_validator.validators import (
     DisposableEmailRule,
+    InvalidLinkedInUrlRule,
+    MassApplicantRule,
     NonUSLocationRule,
     NonUSPhoneRule,
     RuleSeverity,
@@ -51,6 +53,8 @@ ALL_RULES: list[ValidationRule] = [
     VoIPPhoneRule(),
     NonUSPhoneRule(),
     NonUSLocationRule(),
+    InvalidLinkedInUrlRule(),
+    MassApplicantRule(),
 ]
 
 
@@ -140,6 +144,7 @@ async def validate_applicant(
         "location": applicant.location,
         "linkedin_url": applicant.linkedin_url,
         "is_manually_added": getattr(applicant, "is_manually_added", False),
+        "opportunity_count": getattr(applicant, "opportunity_count", 1),
     }
 
     # Track results

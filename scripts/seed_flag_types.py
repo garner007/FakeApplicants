@@ -174,6 +174,14 @@ FLAG_TYPES = [
         "default_severity": FlagSeverity.INFO.value,
         "weight": 0.5,
     },
+    {
+        "code": "MASS_APPLICANT",
+        "name": "Mass Applicant",
+        "description": "Applicant applied to many positions in a short time",
+        "category": FlagCategory.BEHAVIOR.value,
+        "default_severity": FlagSeverity.MEDIUM.value,
+        "weight": 2.0,
+    },
 ]
 
 

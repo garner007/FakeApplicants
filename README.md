@@ -116,8 +116,11 @@ make docker-up
 # Run migrations
 make db-upgrade
 
-# Seed flag types and sample data
+# Seed essential data (flag types, etc.)
 make db-seed
+
+# Optional: Seed fake applicants for testing
+make db-seed-applicants
 ```
 
 ### 3. Run the Application
@@ -291,19 +294,12 @@ make run              # Production API server
 
 ### Database
 ```bash
-make docker-up        # Start PostgreSQL
-make docker-down      # Stop all services
-make db-upgrade       # Apply migrations
-make db-downgrade     # Rollback migration
-make db-seed          # Seed all data
-```
-
-### Dev Container
-```bash
-make dev-shell        # Open shell in container
-make dev-api          # Run API in container
-make dev-db-upgrade   # Migrate in container
-make dev-test         # Test in container
+make docker-up           # Start PostgreSQL
+make docker-down         # Stop all services
+make db-upgrade          # Apply migrations
+make db-downgrade        # Rollback migration
+make db-seed             # Seed essential data (flags, etc.)
+make db-seed-applicants  # Seed fake applicants (testing)
 ```
 
 ## Environment Variables
@@ -311,8 +307,8 @@ make dev-test         # Test in container
 Create `.env` from `.env.example`:
 
 ```bash
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/applicant_validator
+# Database (example - replace with your credentials)
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/applicant_validator  # pragma: allowlist secret
 
 # Lever API
 LEVER_API_KEY=your_lever_api_key
