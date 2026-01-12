@@ -115,8 +115,7 @@ class MassApplicantRule(ValidationRule):
             return RuleResult.create_fail(
                 rule_name=self.name,
                 message=(
-                    f"Applicant applied to {opportunity_count} positions "
-                    f"(threshold: {threshold})"
+                    f"Applicant applied to {opportunity_count} positions (threshold: {threshold})"
                 ),
                 severity=self.default_severity,
                 evidence=evidence,

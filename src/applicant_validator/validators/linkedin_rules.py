@@ -51,18 +51,25 @@ def get_linkedin_url_type(url: str | None) -> str | None:
 
         path = parsed.path.rstrip("/").lower()
 
+        # Check profile URL pattern first (regex-based)
         if re.match(r"^/(in|pub)/", path):
             return "profile"
-        elif "/jobs/" in path:
-            return "job"
-        elif "/company/" in path:
-            return "company"
-        elif "/school/" in path:
-            return "school"
-        elif "/posts/" in path or "/pulse/" in path:
-            return "post"
-        else:
-            return "other"
+
+        # Map path patterns to URL types (substring checks)
+        url_type_mapping = {
+            "/jobs/": "job",
+            "/company/": "company",
+            "/school/": "school",
+            "/posts/": "post",
+            "/pulse/": "post",
+        }
+
+        # Check all patterns and return first match, or 'other'
+        for pattern, url_type in url_type_mapping.items():
+            if pattern in path:
+                return url_type
+
+        return "other"
     except Exception:
         return None
 

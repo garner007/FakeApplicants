@@ -212,6 +212,7 @@ async def _perform_sync(days: int) -> None:
         client = LeverClient(
             api_key=api_key,
             environment=environment,
+            timeout=120.0,  # Increased timeout for large syncs
         )
 
         # Calculate timestamp for date filter
@@ -431,57 +432,122 @@ async def _perform_sync(days: int) -> None:
         # Sync job postings and link applicants to postings
         _sync_state.message = "Syncing job postings..."
 
-        # Collect all unique opportunity IDs from applicants
+        # Build mapping from contact ID -> candidate ID (Lever candidates have both)
+        # Opportunities reference `contact` (not `id`), so we need this mapping
+        contact_to_candidate: dict[str, str] = {}
+        for data in all_applicants:
+            contact_id = data.get("contact")  # Contact ID
+            candidate_id = data.get("id")  # Candidate ID (used as lever_id)
+            if contact_id and candidate_id:
+                contact_to_candidate[contact_id] = candidate_id
+
+        # Fetch all opportunities from Lever to map candidates to postings
+        # (The /candidates endpoint doesn't include opportunityIds, so we fetch separately)
         all_opportunity_ids: set[str] = set()
         applicant_opportunity_map: dict[str, list[str]] = {}  # lever_id -> opportunity_ids
+        opp_to_posting: dict[str, str] = {}  # opportunity_id -> posting_id
+        all_postings: dict[str, dict[str, Any]] = {}  # posting_id -> posting_data
 
-        for data in all_applicants:
-            opp_ids = data.get("opportunityIds", [])
-            lever_id = data["id"]
-            if opp_ids:
-                all_opportunity_ids.update(opp_ids)
-                applicant_opportunity_map[lever_id] = opp_ids
+        async with client:
+            # First fetch all postings
+            _sync_state.message = "Fetching job postings from Lever..."
+            posting_offset = None
+            posting_page = 1
+            while True:
+                posting_params: dict[str, int | str] = {"limit": 100}
+                if posting_offset:
+                    posting_params["offset"] = posting_offset
 
-        if all_opportunity_ids:
-            # Fetch all postings from Lever
-            all_postings: dict[str, dict[str, Any]] = {}  # posting_id -> posting_data
-            opp_to_posting: dict[str, str] = {}  # opportunity_id -> posting_id
+                posting_response = await client._make_lever_request(
+                    "GET", "/postings", params=posting_params
+                )
+                postings = posting_response.get("data", [])
+                if not postings:
+                    break
 
-            async with client:
-                # First fetch all postings
-                _sync_state.message = "Fetching job postings from Lever..."
-                offset = None
-                while True:
-                    postings = await client.get_postings(limit=100, offset=offset)
-                    if not postings:
-                        break
+                for posting in postings:
+                    posting_id = posting.get("id")
+                    if posting_id:
+                        all_postings[posting_id] = posting
 
-                    for posting in postings:
-                        posting_id = posting.get("id")
-                        if posting_id:
-                            all_postings[posting_id] = posting
+                if posting_response.get("hasNext"):
+                    posting_offset = posting_response.get("next")
+                    posting_page += 1
+                    _sync_state.message = f"Fetching job postings page {posting_page}..."
+                else:
+                    break
 
-                    # Check for pagination (Lever uses hasNext)
-                    # For postings endpoint, we just keep fetching until empty
-                    if len(postings) < 100:
-                        break
-                    # Use the last posting's id as offset if needed
-                    offset = postings[-1].get("id") if postings else None
-                    if not offset:
-                        break
+            # Fetch opportunities from the same date range to map candidates to postings
+            _sync_state.message = "Fetching opportunities from Lever..."
+            opp_offset = None
+            opp_page = 1
+            while True:
+                opp_params: dict[str, Any] = {
+                    "limit": 100,
+                    "created_at_start": created_at_start,  # Same date filter as candidates
+                    "expand": ["applications"],  # Expand to get application details
+                }
+                if opp_offset:
+                    opp_params["offset"] = opp_offset
 
-                # Fetch opportunities to get posting IDs
-                _sync_state.message = "Mapping opportunities to postings..."
-                for opp_id in all_opportunity_ids:
-                    try:
-                        opp_data = await client.get_opportunity(opp_id)
-                        posting_id = opp_data.get("posting")
-                        if posting_id:
-                            opp_to_posting[opp_id] = posting_id
-                    except Exception:
-                        # Skip opportunities that can't be fetched
+                opp_response = await client._make_lever_request(
+                    "GET", "/opportunities", params=opp_params
+                )
+                opportunities = opp_response.get("data", [])
+                if not opportunities:
+                    break
+
+                for opp in opportunities:
+                    opp_id = opp.get("id")
+                    opp_contact_id = opp.get("contact")  # Contact ID in opportunity
+
+                    # Get posting ID from applications (expanded)
+                    # Each application has a 'posting' field that references the job posting
+                    opp_posting_id: str | None = None
+                    applications = opp.get("applications", [])
+                    if applications:
+                        # Check if applications are expanded (dicts) or just IDs (strings)
+                        first_app = applications[0]
+                        if isinstance(first_app, dict):
+                            # Expanded - get posting from application
+                            opp_posting_id = first_app.get("posting")
+                        # If applications are just IDs, we can't get posting without extra API call
+
+                    if not opp_id or not opp_contact_id:
                         continue
 
+                    # Look up the candidate ID from the contact ID
+                    candidate_id = contact_to_candidate.get(opp_contact_id)
+                    if not candidate_id:
+                        continue  # Opportunity is for a candidate we didn't sync
+
+                    all_opportunity_ids.add(opp_id)
+
+                    if candidate_id not in applicant_opportunity_map:
+                        applicant_opportunity_map[candidate_id] = []
+                    applicant_opportunity_map[candidate_id].append(opp_id)
+
+                    if opp_posting_id:
+                        opp_to_posting[opp_id] = opp_posting_id
+
+                if opp_response.get("hasNext"):
+                    opp_offset = opp_response.get("next")
+                    opp_page += 1
+                    _sync_state.message = f"Fetching opportunities page {opp_page}..."
+                else:
+                    break
+
+        # Show statistics in sync status
+        opp_with_postings = len(opp_to_posting)
+        total_opps = len(all_opportunity_ids)
+        postings_count = len(all_postings)
+        applicants_with_opps = len(applicant_opportunity_map)
+        _sync_state.message = (
+            f"Found {total_opps} opportunities, {opp_with_postings} have postings, "
+            f"{postings_count} postings fetched, {applicants_with_opps} applicants with opps"
+        )
+
+        if all_opportunity_ids:
             # Store postings and create applicant links
             _sync_state.message = "Storing job postings..."
             async with get_session() as session:
@@ -582,6 +648,17 @@ async def _perform_sync(days: int) -> None:
                         )
                         session.add(applicant_posting)
                         existing_links.add(link_key)
+
+                # Update applicants with their first opportunity ID and count
+                _sync_state.message = "Updating applicant opportunity data..."
+                for lever_id, opp_ids in applicant_opportunity_map.items():
+                    opp_applicant = applicant_db_map.get(lever_id)
+                    if opp_applicant and opp_ids:
+                        # Set the first opportunity ID if not already set
+                        if not opp_applicant.lever_opportunity_id:
+                            opp_applicant.lever_opportunity_id = opp_ids[0]
+                        # Update opportunity count
+                        opp_applicant.opportunity_count = len(opp_ids)
 
                 await session.commit()
 
@@ -721,9 +798,23 @@ async def _perform_sync(days: int) -> None:
         _sync_state.last_sync_count = len(all_applicants)
 
     except Exception as e:
+        import traceback
+
+        error_msg = str(e) or f"{type(e).__name__}: {e!r}"
         _sync_state.status = SyncStatus.FAILED
-        _sync_state.error = str(e)
-        _sync_state.message = f"Sync failed: {e!s}"
+        _sync_state.error = error_msg
+        _sync_state.message = f"Sync failed: {error_msg}"
+
+        # Log the full traceback for debugging
+        import structlog
+
+        logger = structlog.get_logger()
+        logger.error(
+            "sync_failed",
+            error=error_msg,
+            error_type=type(e).__name__,
+            traceback=traceback.format_exc(),
+        )
 
 
 @router.get("/status", response_model=SyncStatusResponse)

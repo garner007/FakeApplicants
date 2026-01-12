@@ -284,7 +284,7 @@ class AuthSettingsUpdate(BaseModel):
 
 @router.get("/auth-settings", response_model=AuthSettingsResponse)
 async def get_auth_settings(
-    admin_user: AdminUser,  # Require admin access
+    _admin_user: AdminUser,  # Require admin access
 ) -> AuthSettingsResponse:
     """Get all auth settings.
 
@@ -299,7 +299,7 @@ async def get_auth_settings(
 @router.patch("/auth-settings", response_model=AuthSettingsResponse)
 async def update_auth_settings(
     request: AuthSettingsUpdate,
-    admin_user: AdminUser,  # Require admin access
+    _admin_user: AdminUser,  # Require admin access
 ) -> AuthSettingsResponse:
     """Update auth settings.
 
@@ -338,12 +338,11 @@ async def update_auth_settings(
                         status_code=400,
                         detail=f"Invalid value for {key}: {e}",
                     ) from e
-            elif key == "auth_cookie_secure":
-                if value.lower() not in ("true", "false"):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid value for {key}: must be 'true' or 'false'",
-                    )
+            elif key == "auth_cookie_secure" and value.lower() not in ("true", "false"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid value for {key}: must be 'true' or 'false'",
+                )
 
             await set_auth_setting(session, key, value)
 

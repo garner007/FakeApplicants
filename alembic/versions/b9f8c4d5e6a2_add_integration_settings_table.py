@@ -5,8 +5,8 @@ Revises: a8e7f3b2c4d1
 Create Date: 2026-01-07 15:00:00.000000
 
 """
+
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
 from alembic import op
@@ -14,9 +14,9 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "b9f8c4d5e6a2"
-down_revision: Union[str, Sequence[str], None] = "a8e7f3b2c4d1"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "a8e7f3b2c4d1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -54,7 +54,10 @@ def upgrade() -> None:
     # Seed default integration settings
     op.execute(
         """
-        INSERT INTO integration_settings (id, provider, display_name, is_enabled, fraud_score_threshold, monthly_limit, monthly_usage)
+        INSERT INTO integration_settings (
+            id, provider, display_name, is_enabled,
+            fraud_score_threshold, monthly_limit, monthly_usage
+        )
         VALUES
             (gen_random_uuid(), 'ipqualityscore', 'IPQualityScore', false, 85, 1000, 0),
             (gen_random_uuid(), 'twilio', 'Twilio', false, null, null, 0)

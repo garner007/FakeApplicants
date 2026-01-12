@@ -7,6 +7,7 @@ Create Date: 2026-01-08 15:44:51.484631
 Updates flag messages to reflect US-only hiring policy.
 Changes "US/Canada" references to just "US".
 """
+
 from collections.abc import Sequence
 
 from alembic import op

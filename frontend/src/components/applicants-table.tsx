@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Applicant, SortField, SortOrder } from "@/lib/types";
 import { updateApplicantReviewed } from "@/lib/api";
+import { getRiskBadgeVariant, formatDate } from "@/lib/utils";
 
 interface ApplicantsTableProps {
   applicants: Applicant[];
@@ -22,29 +23,6 @@ interface ApplicantsTableProps {
   sortOrder: SortOrder;
   onSort: (field: SortField) => void;
   onApplicantUpdated: () => void;
-}
-
-function getRiskBadgeVariant(riskLevel: string | null): "default" | "secondary" | "destructive" | "outline" {
-  switch (riskLevel?.toLowerCase()) {
-    case "high":
-      return "destructive";
-    case "medium":
-      return "secondary";
-    case "low":
-      return "outline";
-    default:
-      return "default";
-  }
-}
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function SortIcon({ field, currentField, currentOrder }: { field: SortField; currentField: SortField; currentOrder: SortOrder }) {

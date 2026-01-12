@@ -7,47 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fetchApplicant, updateApplicantReviewed, validateApplicant } from "@/lib/api";
+import { getRiskBadgeVariant, formatDate } from "@/lib/utils";
 import type { ApplicantDetail, Flag } from "@/lib/types";
 
-function getRiskBadgeVariant(riskLevel: string | null): "default" | "secondary" | "destructive" | "outline" {
-  switch (riskLevel?.toLowerCase()) {
-    case "critical":
-      return "destructive";
-    case "high":
-      return "destructive";
-    case "medium":
-      return "secondary";
-    case "low":
-      return "outline";
-    default:
-      return "default";
-  }
-}
+// getSeverityBadgeVariant uses the same logic as getRiskBadgeVariant
+const getSeverityBadgeVariant = getRiskBadgeVariant;
 
-function getSeverityBadgeVariant(severity: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (severity.toLowerCase()) {
-    case "critical":
-      return "destructive";
-    case "high":
-      return "destructive";
-    case "medium":
-      return "secondary";
-    case "low":
-      return "outline";
-    default:
-      return "default";
-  }
-}
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+// formatDateLong uses "long" month format for this page
+const formatDateLong = (dateString: string) => formatDate(dateString, "long");
 
 function FlagCard({ flag }: { flag: Flag }) {
   return (
@@ -63,7 +30,7 @@ function FlagCard({ flag }: { flag: Flag }) {
       </div>
       <p className="text-sm text-gray-700 mt-2">{flag.message}</p>
       <p className="text-xs text-gray-400 mt-2">
-        Flagged: {formatDate(flag.created_at)}
+        Flagged: {formatDateLong(flag.created_at)}
       </p>
     </div>
   );
@@ -331,7 +298,7 @@ export default function ApplicantDetailPage() {
                 )}
                 <div>
                   <dt className="text-xs text-gray-400">Created</dt>
-                  <dd className="text-sm text-gray-900">{formatDate(applicant.created_at)}</dd>
+                  <dd className="text-sm text-gray-900">{formatDateLong(applicant.created_at)}</dd>
                 </div>
               </dl>
             </div>
@@ -353,7 +320,7 @@ export default function ApplicantDetailPage() {
               </div>
               {applicant.is_reviewed && applicant.reviewed_at && (
                 <p className="text-sm text-gray-500">
-                  Reviewed {formatDate(applicant.reviewed_at)}
+                  Reviewed {formatDateLong(applicant.reviewed_at)}
                   {applicant.reviewed_by && ` by ${applicant.reviewed_by}`}
                 </p>
               )}
@@ -374,55 +341,64 @@ export default function ApplicantDetailPage() {
             )}
           </div>
 
-          {!applicant.postings || applicant.postings.length === 0 ? (
-            <p className="text-gray-500 text-sm">
-              {applicant.opportunity_count > 0
-                ? `Applied to ${applicant.opportunity_count} job(s), but posting details not yet synced.`
-                : "No job applications found for this applicant."}
-            </p>
+          {applicant.opportunity_count === 0 ? (
+            <p className="text-gray-500 text-sm">No job applications found for this applicant.</p>
           ) : (
             <div className="space-y-3">
-              {applicant.postings.map((posting) => (
-                <div
-                  key={posting.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
-                >
-                  <div>
-                    <h4 className="font-medium text-gray-900">{posting.title}</h4>
-                    <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
-                      {posting.team && <span>{posting.team}</span>}
-                      {posting.department && (
-                        <>
-                          {posting.team && <span>•</span>}
-                          <span>{posting.department}</span>
-                        </>
-                      )}
-                      {posting.location && (
-                        <>
-                          {(posting.team || posting.department) && <span>•</span>}
-                          <span>{posting.location}</span>
-                        </>
-                      )}
-                      {posting.commitment && (
-                        <>
-                          {(posting.team || posting.department || posting.location) && (
-                            <span>•</span>
+              {applicant.postings && applicant.postings.length > 0 ? (
+                <>
+                  {applicant.postings.map((posting) => (
+                    <div
+                      key={posting.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                    >
+                      <div>
+                        <h4 className="font-medium text-gray-900">{posting.title}</h4>
+                        <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
+                          {posting.team && <span>{posting.team}</span>}
+                          {posting.department && (
+                            <>
+                              {posting.team && <span>•</span>}
+                              <span>{posting.department}</span>
+                            </>
                           )}
-                          <span>{posting.commitment}</span>
-                        </>
-                      )}
+                          {posting.location && (
+                            <>
+                              {(posting.team || posting.department) && <span>•</span>}
+                              <span>{posting.location}</span>
+                            </>
+                          )}
+                          {posting.commitment && (
+                            <>
+                              {(posting.team || posting.department || posting.location) && (
+                                <span>•</span>
+                              )}
+                              <span>{posting.commitment}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <a
+                        href={`https://hire.lever.co/postings/${posting.lever_posting_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-sm shrink-0 ml-4"
+                      >
+                        View in Lever
+                      </a>
                     </div>
-                  </div>
-                  <a
-                    href={`https://hire.lever.co/postings/${posting.lever_posting_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline text-sm shrink-0 ml-4"
-                  >
-                    View in Lever
-                  </a>
-                </div>
-              ))}
+                  ))}
+                  {applicant.opportunity_count > applicant.postings.length && (
+                    <p className="text-gray-500 text-sm pt-2 border-t">
+                      + {applicant.opportunity_count - applicant.postings.length} additional application(s) pending sync from Lever
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-gray-500 text-sm">
+                  Applied to {applicant.opportunity_count} job(s), but posting details not yet synced.
+                </p>
+              )}
             </div>
           )}
         </div>

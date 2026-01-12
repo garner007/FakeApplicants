@@ -7,6 +7,7 @@ Create Date: 2026-01-08 16:54:42.658062
 Updates non-US phone and location flags from MEDIUM to HIGH severity.
 This reflects the US-only hiring policy where non-US applicants are high risk.
 """
+
 from collections.abc import Sequence
 
 from alembic import op

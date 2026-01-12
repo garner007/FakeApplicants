@@ -141,3 +141,15 @@ Notes:
 - If Claude slips (missed test/lint/typecheck, or produced complex code), add a short rule here to prevent recurrence.
 
 ---
+
+## Commit message format
+Use conventional commits:
+- feat: new feature
+- fix: bug fix
+- docs: documentation only changes
+- style: formatting, missing semi colons, etc; no code change
+- refactor: code change that neither fixes a bug nor adds a feature
+- test: adding missing tests or correcting existing tests
+- chore: changes to the build process or auxiliary tools and libraries such as documentation generation
+- perf: code change that improves performance
+- commits should never be attributed to AI - non-negotiable
